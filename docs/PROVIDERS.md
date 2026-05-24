@@ -21,6 +21,19 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 - 批量生成
 - 结果保存到素材库
 
+无需安装依赖的 Key smoke test：
+
+```bash
+export OPENAI_API_KEY=sk-...
+python3 scripts/smoke_openai_image.py
+```
+
+成功后会生成：
+
+```text
+storage/openai-smoke.png
+```
+
 ## DashScope Wan Video
 
 用途：真实生视频。
@@ -50,4 +63,3 @@ FRAMEAI_PUBLIC_STORAGE_BASE_URL=https://your-domain.example/storage
 ```
 
 如果没有公网地址，DashScope adapter 会明确报错，不会静默用错误参数提交。
-

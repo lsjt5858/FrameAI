@@ -213,6 +213,7 @@
 | 2026-05-24 | 结果评审和模板变量 | 增加素材喜欢/不喜欢/废弃评审状态，以及模板变量填写后套用 |
 | 2026-05-24 | 首尾帧视频 | 生视频任务支持选择起始帧和结束帧，并写入 first_last_frame 参数 |
 | 2026-05-24 | 真实 Provider 框架 | 增加 OpenAI 生图 adapter、DashScope Wan 生视频 adapter、provider 配置状态和公开存储 URL 支持 |
+| 2026-05-24 | OpenAI 调试脚本 | 增加无依赖 OpenAI 生图 smoke test；当前环境 DNS 无法解析 `api.openai.com`，真实调用未跑通 |
 
 ## 更新规则
 
