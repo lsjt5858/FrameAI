@@ -44,6 +44,8 @@ function App() {
   const [referenceAssetId, setReferenceAssetId] = useState("");
   const [assetFile, setAssetFile] = useState(null);
   const [assetName, setAssetName] = useState("");
+  const [assetTypeFilter, setAssetTypeFilter] = useState("all");
+  const [selectedAssetId, setSelectedAssetId] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,6 +61,14 @@ function App() {
   const projectAssets = useMemo(
     () => assets.filter((asset) => !currentProjectId || asset.project_id === currentProjectId),
     [assets, currentProjectId]
+  );
+  const visibleAssets = useMemo(
+    () => projectAssets.filter((asset) => assetTypeFilter === "all" || asset.asset_type === assetTypeFilter),
+    [projectAssets, assetTypeFilter]
+  );
+  const selectedAsset = useMemo(
+    () => projectAssets.find((asset) => asset.id === selectedAssetId) || null,
+    [projectAssets, selectedAssetId]
   );
   const projectTasks = useMemo(
     () => tasks.filter((task) => !currentProjectId || task.project_id === currentProjectId),
@@ -498,13 +508,32 @@ function App() {
                   </label>
                   <button className="primary" type="submit">上传素材</button>
                 </form>
+                <AssetDetail asset={selectedAsset} assets={projectAssets} tasks={projectTasks} />
               </RequireProject>
             </Panel>
             <Panel title="素材库">
-              <AssetGrid assets={projectAssets} onSelect={(asset) => runAction(async () => {
-                await api.updateAsset(asset.id, { is_selected: !asset.is_selected });
-                await refreshProjectData();
-              })} />
+              <div className="toolbar">
+                <label>
+                  素材类型
+                  <select value={assetTypeFilter} onChange={(event) => setAssetTypeFilter(event.target.value)}>
+                    <option value="all">全部</option>
+                    <option value="image">图片</option>
+                    <option value="video">视频</option>
+                    <option value="audio">音频</option>
+                    <option value="document">文档</option>
+                    <option value="other">其他</option>
+                  </select>
+                </label>
+              </div>
+              <AssetGrid
+                assets={visibleAssets}
+                selectedAssetId={selectedAssetId}
+                onOpen={(asset) => setSelectedAssetId(asset.id)}
+                onSelect={(asset) => runAction(async () => {
+                  await api.updateAsset(asset.id, { is_selected: !asset.is_selected });
+                  await refreshProjectData();
+                })}
+              />
             </Panel>
           </section>
         )}
@@ -731,7 +760,7 @@ function RequireProject({ project, children }) {
   return children;
 }
 
-function AssetGrid({ assets, onSelect }) {
+function AssetGrid({ assets, selectedAssetId, onOpen, onSelect }) {
   if (!assets.length) {
     return <div className="empty-state">暂无素材。上传参考图后会显示在这里。</div>;
   }
@@ -739,7 +768,7 @@ function AssetGrid({ assets, onSelect }) {
   return (
     <div className="asset-grid">
       {assets.map((asset) => (
-        <article className="asset-item" key={asset.id}>
+        <article className={`asset-item ${asset.id === selectedAssetId ? "selected" : ""}`} key={asset.id}>
           <div className="asset-preview">
             {asset.mime_type.startsWith("image/") ? (
               <img src={fileUrl(asset.url)} alt={asset.name} />
@@ -751,13 +780,76 @@ function AssetGrid({ assets, onSelect }) {
             <strong>{asset.name}</strong>
             <span>{asset.source} · {asset.asset_type}</span>
             {asset.prompt ? <p>{asset.prompt}</p> : null}
-            <button type="button" onClick={() => onSelect(asset)}>
-              {asset.is_selected ? "取消入选" : "标记入选"}
-            </button>
+            <div className="button-row">
+              <button type="button" onClick={() => onOpen(asset)}>详情</button>
+              <button type="button" onClick={() => onSelect(asset)}>
+                {asset.is_selected ? "取消入选" : "标记入选"}
+              </button>
+            </div>
           </div>
         </article>
       ))}
     </div>
+  );
+}
+
+function AssetDetail({ asset, assets, tasks }) {
+  if (!asset) {
+    return <div className="empty-state detail-empty">选择一个素材后查看来源、参数和上游参考。</div>;
+  }
+
+  const upstreamAssets = assets.filter((item) => asset.upstream_asset_ids.includes(item.id));
+  const sourceTask = tasks.find((task) => task.id === asset.task_id);
+
+  return (
+    <section className="asset-detail" aria-label="素材详情">
+      <div className="item-heading">
+        <h3>{asset.name}</h3>
+        {asset.is_selected ? <span className="tag">已入选</span> : null}
+      </div>
+      <dl className="metadata-list">
+        <dt>类型</dt>
+        <dd>{asset.asset_type}</dd>
+        <dt>来源</dt>
+        <dd>{asset.source}</dd>
+        <dt>平台</dt>
+        <dd>{asset.provider || "未记录"}</dd>
+        <dt>模型</dt>
+        <dd>{asset.model || "未记录"}</dd>
+        <dt>文件</dt>
+        <dd>{asset.file_path}</dd>
+      </dl>
+
+      {asset.prompt ? (
+        <div className="detail-block">
+          <strong>提示词</strong>
+          <p>{asset.prompt}</p>
+        </div>
+      ) : null}
+
+      <div className="detail-block">
+        <strong>参数</strong>
+        <pre>{JSON.stringify(asset.params || {}, null, 2)}</pre>
+      </div>
+
+      <div className="detail-block">
+        <strong>上游参考</strong>
+        {upstreamAssets.length ? (
+          <div className="tag-row">
+            {upstreamAssets.map((item) => <span className="tag" key={item.id}>{item.name}</span>)}
+          </div>
+        ) : (
+          <p>无上游参考素材</p>
+        )}
+      </div>
+
+      {sourceTask ? (
+        <div className="detail-block">
+          <strong>生成任务</strong>
+          <p>{sourceTask.task_type === "image" ? "生图" : "生视频"} · {sourceTask.status} · {sourceTask.model}</p>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
