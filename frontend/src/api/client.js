@@ -58,6 +58,8 @@ export const api = {
   createImageTask: (payload) => request("/tasks/image", { method: "POST", body: JSON.stringify(payload) }),
   createVideoTask: (payload) => request("/tasks/video", { method: "POST", body: JSON.stringify(payload) }),
   retryTask: (id) => request(`/tasks/${id}/retry`, { method: "POST" }),
+  cancelTask: (id) => request(`/tasks/${id}/cancel`, { method: "POST" }),
+  listTaskLogs: (id) => request(`/tasks/${id}/logs`),
 
   providers: () => request("/settings/providers"),
   runtime: () => request("/settings/runtime")

@@ -34,6 +34,11 @@ async def process_next_task() -> None:
         else:
             raise ValueError(f"Unsupported task type: {task['task_type']}")
 
+        current_task = repositories.get_generation_task(task["id"])
+        if current_task and current_task["status"] == "cancelled":
+            _log_api_call(task, endpoint, "cancelled", started_at, monotonic_start)
+            return
+
         result_asset_ids: list[str] = []
         for artifact in artifacts:
             stored = save_generated_file(
@@ -117,4 +122,3 @@ def _log_api_call(
             "duration_ms": duration_ms,
         }
     )
-

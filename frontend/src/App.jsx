@@ -46,6 +46,8 @@ function App() {
   const [assetName, setAssetName] = useState("");
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [taskLogs, setTaskLogs] = useState([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
@@ -73,6 +75,10 @@ function App() {
   const projectTasks = useMemo(
     () => tasks.filter((task) => !currentProjectId || task.project_id === currentProjectId),
     [tasks, currentProjectId]
+  );
+  const selectedTask = useMemo(
+    () => projectTasks.find((task) => task.id === selectedTaskId) || projectTasks[0] || null,
+    [projectTasks, selectedTaskId]
   );
 
   async function loadAll() {
@@ -141,6 +147,16 @@ function App() {
     }, 3000);
     return () => window.clearInterval(timer);
   }, [currentProjectId]);
+
+  useEffect(() => {
+    if (!selectedTask) {
+      setTaskLogs([]);
+      return undefined;
+    }
+
+    api.listTaskLogs(selectedTask.id).then(setTaskLogs).catch(() => setTaskLogs([]));
+    return undefined;
+  }, [selectedTask?.id]);
 
   async function handleCreateProject(event) {
     event.preventDefault();
@@ -677,27 +693,39 @@ function App() {
         )}
 
         {activeTab === "tasks" && (
-          <Panel title="任务记录" subtitle="后台 worker 会轮询 pending 任务，并将 mock 结果写回素材库。">
-            <div className="task-table">
-              {projectTasks.map((task) => (
-                <article className="task-row" key={task.id}>
-                  <div>
-                    <span className={`status ${task.status}`}>{task.status}</span>
-                    <strong>{task.task_type === "image" ? "生图" : "生视频"} · {task.model}</strong>
-                    <p>{task.prompt}</p>
-                  </div>
-                  <div className="task-meta">
-                    <span>尝试 {task.attempts}/{task.max_retries + 1}</span>
-                    <span>结果 {task.result_asset_ids.length}</span>
-                    {task.status === "failed" ? <button type="button" onClick={() => runAction(async () => {
-                      await api.retryTask(task.id);
-                      await refreshProjectData();
-                    })}>重试</button> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Panel>
+          <section className="page-grid">
+            <Panel title="任务记录" subtitle="后台 worker 会轮询 pending 任务，并将 mock 结果写回素材库。">
+              <div className="task-table">
+                {projectTasks.map((task) => (
+                  <article className={`task-row ${task.id === selectedTask?.id ? "selected" : ""}`} key={task.id}>
+                    <div>
+                      <span className={`status ${task.status}`}>{task.status}</span>
+                      <strong>{task.task_type === "image" ? "生图" : "生视频"} · {task.model}</strong>
+                      <p>{task.prompt}</p>
+                    </div>
+                    <div className="task-meta">
+                      <span>尝试 {task.attempts}/{task.max_retries + 1}</span>
+                      <span>结果 {task.result_asset_ids.length}</span>
+                      <button type="button" onClick={() => setSelectedTaskId(task.id)}>详情</button>
+                      {["pending", "running"].includes(task.status) ? (
+                        <button className="danger" type="button" onClick={() => runAction(async () => {
+                          await api.cancelTask(task.id);
+                          await refreshProjectData();
+                        })}>取消</button>
+                      ) : null}
+                      {task.status === "failed" ? <button type="button" onClick={() => runAction(async () => {
+                        await api.retryTask(task.id);
+                        await refreshProjectData();
+                      })}>重试</button> : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </Panel>
+            <Panel title="任务详情">
+              <TaskDetail task={selectedTask} logs={taskLogs} assets={projectAssets} />
+            </Panel>
+          </section>
         )}
 
         {activeTab === "settings" && (
@@ -849,6 +877,86 @@ function AssetDetail({ asset, assets, tasks }) {
           <p>{sourceTask.task_type === "image" ? "生图" : "生视频"} · {sourceTask.status} · {sourceTask.model}</p>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function TaskDetail({ task, logs, assets }) {
+  if (!task) {
+    return <div className="empty-state">暂无任务。创建生图或生视频任务后会显示在这里。</div>;
+  }
+
+  const resultAssets = assets.filter((asset) => task.result_asset_ids.includes(asset.id));
+  const referenceAssets = assets.filter((asset) => task.reference_asset_ids.includes(asset.id));
+
+  return (
+    <section className="task-detail" aria-label="任务详情">
+      <dl className="metadata-list">
+        <dt>类型</dt>
+        <dd>{task.task_type === "image" ? "生图" : "生视频"}</dd>
+        <dt>状态</dt>
+        <dd><span className={`status ${task.status}`}>{task.status}</span></dd>
+        <dt>平台</dt>
+        <dd>{task.provider}</dd>
+        <dt>模型</dt>
+        <dd>{task.model}</dd>
+        <dt>耗费</dt>
+        <dd>{task.estimated_cost}</dd>
+      </dl>
+
+      <div className="detail-block">
+        <strong>提示词</strong>
+        <p>{task.prompt}</p>
+      </div>
+
+      <div className="detail-block">
+        <strong>参数</strong>
+        <pre>{JSON.stringify(task.params || {}, null, 2)}</pre>
+      </div>
+
+      <div className="detail-block">
+        <strong>参考素材</strong>
+        {referenceAssets.length ? (
+          <div className="tag-row">
+            {referenceAssets.map((asset) => <span className="tag" key={asset.id}>{asset.name}</span>)}
+          </div>
+        ) : (
+          <p>无参考素材</p>
+        )}
+      </div>
+
+      <div className="detail-block">
+        <strong>生成结果</strong>
+        {resultAssets.length ? (
+          <div className="tag-row">
+            {resultAssets.map((asset) => <span className="tag" key={asset.id}>{asset.name}</span>)}
+          </div>
+        ) : (
+          <p>暂无结果素材</p>
+        )}
+      </div>
+
+      {task.error_message ? (
+        <div className="notice error compact-notice">{task.error_message}</div>
+      ) : null}
+
+      <div className="detail-block">
+        <strong>调用日志</strong>
+        {logs.length ? (
+          <div className="log-list">
+            {logs.map((log) => (
+              <article className="log-item" key={log.id}>
+                <span className={`status ${log.status}`}>{log.status}</span>
+                <strong>{log.endpoint}</strong>
+                <span>{log.duration_ms}ms</span>
+                {log.error_message ? <p>{log.error_message}</p> : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>暂无调用日志</p>
+        )}
+      </div>
     </section>
   );
 }

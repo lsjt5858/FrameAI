@@ -40,7 +40,14 @@ def retry_task(task_id: str) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{task_id}/cancel", response_model=GenerationTaskOut)
+def cancel_task(task_id: str) -> dict:
+    try:
+        return repositories.cancel_generation_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/{task_id}/logs", response_model=list[ApiCallLogOut])
 def list_task_logs(task_id: str) -> list[dict]:
     return repositories.list_api_call_logs(task_id)
-

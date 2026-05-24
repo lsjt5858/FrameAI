@@ -517,6 +517,31 @@ def retry_generation_task(task_id: str) -> dict[str, Any]:
     return get_generation_task(task_id)  # type: ignore[return-value]
 
 
+def cancel_generation_task(task_id: str) -> dict[str, Any]:
+    task = get_generation_task(task_id)
+    if not task:
+        raise _not_found("generation task", task_id)
+
+    if task["status"] in {"succeeded", "failed", "cancelled"}:
+        return task
+
+    now = utcnow()
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE generation_tasks
+            SET status = 'cancelled',
+                error_message = 'Task cancelled by user',
+                finished_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (now, now, task_id),
+        )
+        conn.commit()
+    return get_generation_task(task_id)  # type: ignore[return-value]
+
+
 def create_api_call_log(data: dict[str, Any]) -> dict[str, Any]:
     log_id = new_id("log")
     with connect() as conn:
@@ -561,4 +586,3 @@ def list_api_call_logs(task_id: str | None = None) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(sql, params).fetchall()
     return _rows(rows, {"request_payload", "response_payload"})
-

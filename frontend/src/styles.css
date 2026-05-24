@@ -512,6 +512,11 @@ textarea {
   align-items: start;
 }
 
+.task-row.selected {
+  border-color: #2a9d8f;
+  box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.1);
+}
+
 .task-meta {
   display: grid;
   gap: 8px;
@@ -536,6 +541,42 @@ textarea {
 .status.failed {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.status.cancelled {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.task-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.log-list {
+  display: grid;
+  gap: 10px;
+}
+
+.log-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #dce3eb;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px;
+}
+
+.log-item p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #a33b20;
+}
+
+.compact-notice {
+  margin-bottom: 0;
 }
 
 .empty-state {
