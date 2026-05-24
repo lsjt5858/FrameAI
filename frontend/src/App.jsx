@@ -53,6 +53,8 @@ function App() {
   const [videoPrompt, setVideoPrompt] = useState("");
   const [imageParams, setImageParams] = useState(EMPTY_IMAGE_PARAMS);
   const [videoParams, setVideoParams] = useState(EMPTY_VIDEO_PARAMS);
+  const [imageProviderId, setImageProviderId] = useState("mock");
+  const [videoProviderId, setVideoProviderId] = useState("mock");
   const [referenceAssetId, setReferenceAssetId] = useState("");
   const [endFrameAssetId, setEndFrameAssetId] = useState("");
   const [assetFile, setAssetFile] = useState(null);
@@ -100,6 +102,14 @@ function App() {
   const imageAssets = useMemo(
     () => projectAssets.filter((asset) => asset.asset_type === "image"),
     [projectAssets]
+  );
+  const imageProviders = useMemo(
+    () => providers.filter((provider) => ["image", "image_video"].includes(provider.kind)),
+    [providers]
+  );
+  const videoProviders = useMemo(
+    () => providers.filter((provider) => ["video", "image_video"].includes(provider.kind)),
+    [providers]
   );
 
   async function loadAll() {
@@ -382,8 +392,13 @@ function App() {
     if (!currentProjectId) return;
     await runAction(async () => {
       const prompt = type === "image" ? imagePrompt : videoPrompt;
-      const provider = providers[0]?.id || "mock";
-      const model = type === "image" ? "mock-image-v1" : "mock-video-v1";
+      const providerInfo = type === "image"
+        ? imageProviders.find((provider) => provider.id === imageProviderId) || imageProviders[0]
+        : videoProviders.find((provider) => provider.id === videoProviderId) || videoProviders[0];
+      const provider = providerInfo?.id || "mock";
+      const model = type === "image"
+        ? providerInfo?.image_model || "mock-image-v1"
+        : providerInfo?.video_model || "mock-video-v1";
       const reference_asset_ids = type === "video"
         ? [referenceAssetId, endFrameAssetId].filter(Boolean)
         : [referenceAssetId].filter(Boolean);
@@ -416,8 +431,13 @@ function App() {
         throw new Error(type === "image" ? "请先填写分镜生图提示词。" : "请先填写分镜生视频提示词。");
       }
 
-      const provider = providers[0]?.id || "mock";
-      const model = type === "image" ? "mock-image-v1" : "mock-video-v1";
+      const providerInfo = type === "image"
+        ? imageProviders.find((provider) => provider.id === imageProviderId) || imageProviders[0]
+        : videoProviders.find((provider) => provider.id === videoProviderId) || videoProviders[0];
+      const provider = providerInfo?.id || "mock";
+      const model = type === "image"
+        ? providerInfo?.image_model || "mock-image-v1"
+        : providerInfo?.video_model || "mock-video-v1";
       const reference_asset_ids = type === "image"
         ? shot.reference_asset_ids
         : [shot.selected_image_asset_id || shot.reference_asset_ids[0]].filter(Boolean);
@@ -915,6 +935,16 @@ function App() {
               <RequireProject project={selectedProject}>
                 <div className="stack">
                   <label>
+                    Provider
+                    <select value={imageProviderId} onChange={(event) => setImageProviderId(event.target.value)}>
+                      {imageProviders.map((provider) => (
+                        <option value={provider.id} key={provider.id}>
+                          {provider.name}{provider.configured ? "" : "（未配置）"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
                     提示词
                     <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} rows={8} />
                   </label>
@@ -952,6 +982,16 @@ function App() {
             <Panel title="生视频任务">
               <RequireProject project={selectedProject}>
                 <div className="stack">
+                  <label>
+                    Provider
+                    <select value={videoProviderId} onChange={(event) => setVideoProviderId(event.target.value)}>
+                      {videoProviders.map((provider) => (
+                        <option value={provider.id} key={provider.id}>
+                          {provider.name}{provider.configured ? "" : "（未配置）"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label>
                     起始帧素材
                     <select value={referenceAssetId} onChange={(event) => setReferenceAssetId(event.target.value)}>
@@ -1069,7 +1109,7 @@ function App() {
                   <article className="template-item" key={provider.id}>
                     <div className="item-heading">
                       <strong>{provider.name}</strong>
-                      <span className="tag">{provider.id}</span>
+                      <span className={`tag ${provider.configured ? "" : "warning-tag"}`}>{provider.configured ? "已配置" : "未配置"}</span>
                     </div>
                     <p>{provider.description}</p>
                     <p>生图模型：{provider.image_model}</p>
