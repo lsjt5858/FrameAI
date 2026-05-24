@@ -1,0 +1,2 @@
+"""External generation platform adapters."""
+
