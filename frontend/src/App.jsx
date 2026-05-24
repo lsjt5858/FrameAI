@@ -54,6 +54,7 @@ function App() {
   const [imageParams, setImageParams] = useState(EMPTY_IMAGE_PARAMS);
   const [videoParams, setVideoParams] = useState(EMPTY_VIDEO_PARAMS);
   const [referenceAssetId, setReferenceAssetId] = useState("");
+  const [endFrameAssetId, setEndFrameAssetId] = useState("");
   const [assetFile, setAssetFile] = useState(null);
   const [assetName, setAssetName] = useState("");
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
@@ -383,8 +384,13 @@ function App() {
       const prompt = type === "image" ? imagePrompt : videoPrompt;
       const provider = providers[0]?.id || "mock";
       const model = type === "image" ? "mock-image-v1" : "mock-video-v1";
-      const reference_asset_ids = referenceAssetId ? [referenceAssetId] : [];
+      const reference_asset_ids = type === "video"
+        ? [referenceAssetId, endFrameAssetId].filter(Boolean)
+        : [referenceAssetId].filter(Boolean);
       const params = type === "image" ? normalizedImageParams(imageParams) : normalizedVideoParams(videoParams);
+      if (type === "video" && endFrameAssetId) {
+        params.mode = "first_last_frame";
+      }
       const max_retries = type === "image" ? Number(imageParams.max_retries) : Number(videoParams.max_retries);
       const create = type === "image" ? api.createImageTask : api.createVideoTask;
       await create({
@@ -947,10 +953,19 @@ function App() {
               <RequireProject project={selectedProject}>
                 <div className="stack">
                   <label>
-                    参考素材
+                    起始帧素材
                     <select value={referenceAssetId} onChange={(event) => setReferenceAssetId(event.target.value)}>
-                      <option value="">不使用参考素材</option>
-                      {projectAssets.map((asset) => (
+                      <option value="">不使用起始帧</option>
+                      {imageAssets.map((asset) => (
+                        <option value={asset.id} key={asset.id}>{asset.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    结束帧素材
+                    <select value={endFrameAssetId} onChange={(event) => setEndFrameAssetId(event.target.value)}>
+                      <option value="">不使用结束帧</option>
+                      {imageAssets.map((asset) => (
                         <option value={asset.id} key={asset.id}>{asset.name}</option>
                       ))}
                     </select>
