@@ -33,6 +33,8 @@ function App() {
   const [runtime, setRuntime] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT);
+  const [editingProjectId, setEditingProjectId] = useState("");
+  const [projectEditForm, setProjectEditForm] = useState(EMPTY_PROJECT);
   const [shotForm, setShotForm] = useState(EMPTY_SHOT);
   const [templateForm, setTemplateForm] = useState(EMPTY_TEMPLATE);
   const [imagePrompt, setImagePrompt] = useState("");
@@ -136,6 +138,53 @@ function App() {
       setProjects([project, ...projects]);
       setSelectedProjectId(project.id);
       setActiveTab("shots");
+    });
+  }
+
+  function startEditProject(project) {
+    setEditingProjectId(project.id);
+    setProjectEditForm({
+      name: project.name,
+      description: project.description || ""
+    });
+  }
+
+  function cancelEditProject() {
+    setEditingProjectId("");
+    setProjectEditForm(EMPTY_PROJECT);
+  }
+
+  async function handleUpdateProject(event) {
+    event.preventDefault();
+    if (!editingProjectId) return;
+
+    await runAction(async () => {
+      const updatedProject = await api.updateProject(editingProjectId, projectEditForm);
+      setProjects((items) => items.map((item) => (item.id === updatedProject.id ? updatedProject : item)));
+      cancelEditProject();
+    });
+  }
+
+  async function handleDeleteProject(project) {
+    const confirmed = window.confirm(`确认删除项目“${project.name}”？项目下的分镜会一起删除。`);
+    if (!confirmed) return;
+
+    await runAction(async () => {
+      await api.deleteProject(project.id);
+      const nextProjects = projects.filter((item) => item.id !== project.id);
+      setProjects(nextProjects);
+      if (editingProjectId === project.id) {
+        cancelEditProject();
+      }
+      if (currentProjectId === project.id) {
+        const nextProjectId = nextProjects[0]?.id || "";
+        setSelectedProjectId(nextProjectId);
+        if (!nextProjectId) {
+          setShots([]);
+          setAssets([]);
+          setTasks([]);
+        }
+      }
     });
   }
 
@@ -270,7 +319,7 @@ function App() {
 
         {activeTab === "projects" && (
           <section className="page-grid">
-            <Panel title="项目管理" subtitle="每个视频或漫剧一个项目，后续素材、分镜和生成任务都挂在项目下。">
+            <Panel title="新建项目" subtitle="每个视频或漫剧一个项目，后续素材、分镜和生成任务都挂在项目下。">
               <form className="stack" onSubmit={handleCreateProject}>
                 <label>
                   项目名称
@@ -282,8 +331,37 @@ function App() {
                 </label>
                 <button className="primary" type="submit">创建项目</button>
               </form>
+
+              {editingProjectId ? (
+                <form className="stack edit-form" onSubmit={handleUpdateProject}>
+                  <div className="panel-heading compact-heading">
+                    <h2>编辑项目</h2>
+                    <p>修改当前项目名称、说明和工作状态。</p>
+                  </div>
+                  <label>
+                    项目名称
+                    <input
+                      value={projectEditForm.name}
+                      onChange={(event) => setProjectEditForm({ ...projectEditForm, name: event.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    项目说明
+                    <textarea
+                      value={projectEditForm.description}
+                      onChange={(event) => setProjectEditForm({ ...projectEditForm, description: event.target.value })}
+                      rows={4}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="primary" type="submit">保存修改</button>
+                    <button type="button" onClick={cancelEditProject}>取消</button>
+                  </div>
+                </form>
+              ) : null}
             </Panel>
-            <Panel title="工作流概览">
+            <Panel title="项目列表">
               <div className="metric-grid">
                 <Metric label="项目" value={projects.length} />
                 <Metric label="分镜" value={projectShots.length} />
@@ -292,10 +370,16 @@ function App() {
               </div>
               <div className="list">
                 {projects.map((project) => (
-                  <button className="row-button" key={project.id} type="button" onClick={() => setSelectedProjectId(project.id)}>
-                    <strong>{project.name}</strong>
-                    <span>{project.description || "未填写说明"}</span>
-                  </button>
+                  <article className={`project-item ${project.id === currentProjectId ? "selected" : ""}`} key={project.id}>
+                    <button className="row-button" type="button" onClick={() => setSelectedProjectId(project.id)}>
+                      <strong>{project.name}</strong>
+                      <span>{project.description || "未填写说明"}</span>
+                    </button>
+                    <div className="project-actions">
+                      <button type="button" onClick={() => startEditProject(project)}>编辑</button>
+                      <button className="danger" type="button" onClick={() => handleDeleteProject(project)}>删除</button>
+                    </div>
+                  </article>
                 ))}
               </div>
             </Panel>
@@ -585,4 +669,3 @@ function splitList(value) {
 }
 
 export default App;
-

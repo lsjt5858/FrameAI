@@ -38,6 +38,8 @@ export function fileUrl(url) {
 export const api = {
   listProjects: () => request("/projects"),
   createProject: (payload) => request("/projects", { method: "POST", body: JSON.stringify(payload) }),
+  updateProject: (id, payload) => request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteProject: (id) => request(`/projects/${id}`, { method: "DELETE" }),
 
   listShots: (projectId) => request(`/shots${projectId ? `?project_id=${projectId}` : ""}`),
   createShot: (payload) => request("/shots", { method: "POST", body: JSON.stringify(payload) }),
@@ -58,4 +60,3 @@ export const api = {
   providers: () => request("/settings/providers"),
   runtime: () => request("/settings/runtime")
 };
-
