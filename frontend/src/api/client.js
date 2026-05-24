@@ -1,0 +1,61 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+const FILE_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
+
+async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(options.headers || {})
+    }
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload.detail || message;
+    } catch {
+      message = response.statusText || message;
+    }
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+export function fileUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${FILE_ORIGIN}${url}`;
+}
+
+export const api = {
+  listProjects: () => request("/projects"),
+  createProject: (payload) => request("/projects", { method: "POST", body: JSON.stringify(payload) }),
+
+  listShots: (projectId) => request(`/shots${projectId ? `?project_id=${projectId}` : ""}`),
+  createShot: (payload) => request("/shots", { method: "POST", body: JSON.stringify(payload) }),
+  updateShot: (id, payload) => request(`/shots/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+
+  listAssets: (projectId) => request(`/assets${projectId ? `?project_id=${projectId}` : ""}`),
+  uploadAsset: (formData) => request("/assets/upload", { method: "POST", body: formData }),
+  updateAsset: (id, payload) => request(`/assets/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+
+  listTemplates: () => request("/prompt-templates"),
+  createTemplate: (payload) => request("/prompt-templates", { method: "POST", body: JSON.stringify(payload) }),
+
+  listTasks: (projectId) => request(`/tasks${projectId ? `?project_id=${projectId}` : ""}`),
+  createImageTask: (payload) => request("/tasks/image", { method: "POST", body: JSON.stringify(payload) }),
+  createVideoTask: (payload) => request("/tasks/video", { method: "POST", body: JSON.stringify(payload) }),
+  retryTask: (id) => request(`/tasks/${id}/retry`, { method: "POST" }),
+
+  providers: () => request("/settings/providers"),
+  runtime: () => request("/settings/runtime")
+};
+
