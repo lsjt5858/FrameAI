@@ -286,6 +286,7 @@ api_call_logs
 - `storage/`：本地素材文件目录
 - `docs/ARCHITECTURE.md`：工程结构与扩展说明
 - `docs/PROGRESS.md`：开发 todo list 与模块完成记录
+- `docs/PROVIDERS.md`：真实 provider 配置说明
 - `开发指南.md`：完整的产品规划、模块设计、技术路线与阶段目标
 
 后端已包含项目、分镜、素材、提示词模板、生成任务、API 日志等核心数据结构。当前内置 `mock` 生成 adapter，用于先验证任务队列、状态流转和素材入库链路。
@@ -315,6 +316,31 @@ npm run dev
 - 前端工作台：http://localhost:5173
 - 后端 API：http://localhost:8000
 - API 文档：http://localhost:8000/docs
+
+## Provider 配置
+
+默认使用 `mock` provider，不需要任何 API Key，适合本地验证任务、素材、分镜和日志链路。
+
+真实生图可配置 OpenAI：
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_IMAGE_MODEL=gpt-image-1
+```
+
+真实生视频可配置 DashScope Wan：
+
+```bash
+DASHSCOPE_API_KEY=...
+DASHSCOPE_REGION=intl
+DASHSCOPE_VIDEO_MODEL=wan2.6-i2v
+```
+
+注意：云端图生视频通常需要公网可访问的图片 URL。本地 `storage/` 文件不能直接被外部平台拉取，如需图生视频或首尾帧视频，需要配置：
+
+```bash
+FRAMEAI_PUBLIC_STORAGE_BASE_URL=https://your-domain.example/storage
+```
 
 ## 后续建议
 

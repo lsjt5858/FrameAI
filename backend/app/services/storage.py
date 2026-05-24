@@ -34,6 +34,14 @@ def public_url(file_path: str) -> str:
     return f"/storage/{file_path.lstrip('/')}"
 
 
+def external_storage_url(file_path: str) -> str | None:
+    if file_path.startswith(("http://", "https://")):
+        return file_path
+    if not settings.public_storage_base_url:
+        return None
+    return f"{settings.public_storage_base_url}/{file_path.lstrip('/')}"
+
+
 def infer_asset_type(mime_type: str | None, filename: str) -> str:
     mime = mime_type or ""
     suffix = Path(filename).suffix.lower()

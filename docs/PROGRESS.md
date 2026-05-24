@@ -140,12 +140,12 @@
 - ✅ 定义 adapter 协议
 - ✅ 建立 adapter registry
 - ✅ 实现 mock adapter
-- ❌ 实现真实生图 adapter
-- ❌ 实现真实生视频 adapter
-- ❌ 统一外部任务 ID 记录
-- ❌ 统一轮询任务状态
-- ❌ 统一下载结果
-- ❌ 统一错误类型和重试策略
+- ✅ 实现真实生图 adapter
+- ✅ 实现真实生视频 adapter
+- ✅ 统一外部任务 ID 记录
+- ✅ 统一轮询任务状态
+- ✅ 统一下载结果
+- ✅ 统一错误类型和重试策略
 
 ## Phase 4: 素材链路追踪
 
@@ -192,6 +192,8 @@
 - ❌ 当前 mock video 结果是 JSON 占位文件，接真实平台后改为真实视频文件
 - ❌ 当前未引入 ORM，后续迁移 PostgreSQL 时可考虑 SQLAlchemy 或 SQLModel
 - ❌ 当前任务 worker 随 FastAPI 进程启动，后续可迁移到独立 worker / Celery
+- ❌ 真实 OpenAI / DashScope 调用尚未验收，需要 API Key 和可用网络
+- ❌ DashScope 图生视频需要公网图片 URL，本地 `storage/` 需配置公开访问地址
 
 ## 完成记录
 
@@ -210,6 +212,7 @@
 | 2026-05-24 | 复用和日志 | 增加任务参数重跑、成功任务保存模板、素材同源重跑和日志统计页 |
 | 2026-05-24 | 结果评审和模板变量 | 增加素材喜欢/不喜欢/废弃评审状态，以及模板变量填写后套用 |
 | 2026-05-24 | 首尾帧视频 | 生视频任务支持选择起始帧和结束帧，并写入 first_last_frame 参数 |
+| 2026-05-24 | 真实 Provider 框架 | 增加 OpenAI 生图 adapter、DashScope Wan 生视频 adapter、provider 配置状态和公开存储 URL 支持 |
 
 ## 更新规则
 
