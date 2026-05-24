@@ -51,6 +51,8 @@ export const api = {
 
   listTemplates: () => request("/prompt-templates"),
   createTemplate: (payload) => request("/prompt-templates", { method: "POST", body: JSON.stringify(payload) }),
+  updateTemplate: (id, payload) => request(`/prompt-templates/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteTemplate: (id) => request(`/prompt-templates/${id}`, { method: "DELETE" }),
 
   listTasks: (projectId) => request(`/tasks${projectId ? `?project_id=${projectId}` : ""}`),
   createImageTask: (payload) => request("/tasks/image", { method: "POST", body: JSON.stringify(payload) }),

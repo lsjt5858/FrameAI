@@ -37,6 +37,8 @@ function App() {
   const [projectEditForm, setProjectEditForm] = useState(EMPTY_PROJECT);
   const [shotForm, setShotForm] = useState(EMPTY_SHOT);
   const [templateForm, setTemplateForm] = useState(EMPTY_TEMPLATE);
+  const [editingTemplateId, setEditingTemplateId] = useState("");
+  const [templateEditForm, setTemplateEditForm] = useState(EMPTY_TEMPLATE);
   const [imagePrompt, setImagePrompt] = useState("");
   const [videoPrompt, setVideoPrompt] = useState("");
   const [referenceAssetId, setReferenceAssetId] = useState("");
@@ -234,6 +236,52 @@ function App() {
       });
       setTemplates([template, ...templates]);
       setTemplateForm(EMPTY_TEMPLATE);
+    });
+  }
+
+  function startEditTemplate(template) {
+    setEditingTemplateId(template.id);
+    setTemplateEditForm({
+      name: template.name,
+      category: template.category,
+      content: template.content,
+      variables: template.variables.join(", "),
+      notes: template.notes || ""
+    });
+  }
+
+  function cancelEditTemplate() {
+    setEditingTemplateId("");
+    setTemplateEditForm(EMPTY_TEMPLATE);
+  }
+
+  async function handleUpdateTemplate(event) {
+    event.preventDefault();
+    if (!editingTemplateId) return;
+
+    await runAction(async () => {
+      const updatedTemplate = await api.updateTemplate(editingTemplateId, {
+        name: templateEditForm.name,
+        category: templateEditForm.category,
+        content: templateEditForm.content,
+        variables: splitList(templateEditForm.variables),
+        notes: templateEditForm.notes
+      });
+      setTemplates((items) => items.map((item) => (item.id === updatedTemplate.id ? updatedTemplate : item)));
+      cancelEditTemplate();
+    });
+  }
+
+  async function handleDeleteTemplate(template) {
+    const confirmed = window.confirm(`确认删除模板“${template.name}”？`);
+    if (!confirmed) return;
+
+    await runAction(async () => {
+      await api.deleteTemplate(template.id);
+      setTemplates((items) => items.filter((item) => item.id !== template.id));
+      if (editingTemplateId === template.id) {
+        cancelEditTemplate();
+      }
     });
   }
 
@@ -489,6 +537,57 @@ function App() {
                 </label>
                 <button className="primary" type="submit">保存模板</button>
               </form>
+
+              {editingTemplateId ? (
+                <form className="stack edit-form" onSubmit={handleUpdateTemplate}>
+                  <div className="panel-heading compact-heading">
+                    <h2>编辑模板</h2>
+                    <p>更新模板内容后，后续套用会使用新的提示词。</p>
+                  </div>
+                  <label>
+                    模板名称
+                    <input
+                      value={templateEditForm.name}
+                      onChange={(event) => setTemplateEditForm({ ...templateEditForm, name: event.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    分类
+                    <select
+                      value={templateEditForm.category}
+                      onChange={(event) => setTemplateEditForm({ ...templateEditForm, category: event.target.value })}
+                    >
+                      <option value="image">生图</option>
+                      <option value="video">生视频</option>
+                      <option value="character">角色</option>
+                      <option value="scene">场景</option>
+                      <option value="general">通用</option>
+                    </select>
+                  </label>
+                  <label>
+                    模板内容
+                    <textarea
+                      value={templateEditForm.content}
+                      onChange={(event) => setTemplateEditForm({ ...templateEditForm, content: event.target.value })}
+                      rows={6}
+                      required
+                    />
+                  </label>
+                  <label>
+                    变量
+                    <input
+                      value={templateEditForm.variables}
+                      onChange={(event) => setTemplateEditForm({ ...templateEditForm, variables: event.target.value })}
+                      placeholder="character_name, style"
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="primary" type="submit">保存修改</button>
+                    <button type="button" onClick={cancelEditTemplate}>取消</button>
+                  </div>
+                </form>
+              ) : null}
             </Panel>
             <Panel title="模板库">
               <div className="template-list">
@@ -502,6 +601,8 @@ function App() {
                     <div className="button-row">
                       <button type="button" onClick={() => applyTemplate(template, "image")}>套到生图</button>
                       <button type="button" onClick={() => applyTemplate(template, "video")}>套到视频</button>
+                      <button type="button" onClick={() => startEditTemplate(template)}>编辑</button>
+                      <button className="danger" type="button" onClick={() => handleDeleteTemplate(template)}>删除</button>
                     </div>
                   </article>
                 ))}
