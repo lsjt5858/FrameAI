@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.db import init_db
-from app.routers import assets, projects, prompt_templates, settings as settings_router, shots, tasks
+from app.routers import assets, logs, projects, prompt_templates, settings as settings_router, shots, tasks
 from app.services.storage import ensure_storage_dirs
 from app.services.worker import run_worker_loop
 
@@ -48,6 +48,7 @@ app.include_router(assets.router, prefix="/api")
 app.include_router(prompt_templates.router, prefix="/api")
 app.include_router(shots.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
+app.include_router(logs.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 
 app.mount("/storage", StaticFiles(directory=settings.storage_dir), name="storage")
@@ -56,4 +57,3 @@ app.mount("/storage", StaticFiles(directory=settings.storage_dir), name="storage
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-

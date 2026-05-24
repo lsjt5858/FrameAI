@@ -327,6 +327,7 @@ textarea {
   display: block;
   margin-top: 4px;
   font-size: 24px;
+  overflow-wrap: anywhere;
 }
 
 .list,
@@ -716,6 +717,11 @@ textarea {
 
 .compact-notice {
   margin-bottom: 0;
+}
+
+.dashboard {
+  display: grid;
+  gap: 16px;
 }
 
 .empty-state {

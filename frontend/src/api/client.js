@@ -60,6 +60,7 @@ export const api = {
   retryTask: (id) => request(`/tasks/${id}/retry`, { method: "POST" }),
   cancelTask: (id) => request(`/tasks/${id}/cancel`, { method: "POST" }),
   listTaskLogs: (id) => request(`/tasks/${id}/logs`),
+  listLogs: (taskId) => request(`/logs${taskId ? `?task_id=${taskId}` : ""}`),
 
   providers: () => request("/settings/providers"),
   runtime: () => request("/settings/runtime")

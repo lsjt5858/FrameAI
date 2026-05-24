@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { id: "templates", label: "模板" },
   { id: "generate", label: "生成" },
   { id: "tasks", label: "任务" },
+  { id: "logs", label: "日志" },
   { id: "settings", label: "设置" }
 ];
 
@@ -33,6 +34,7 @@ function App() {
   const [assets, setAssets] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [logs, setLogs] = useState([]);
   const [providers, setProviders] = useState([]);
   const [runtime, setRuntime] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -88,6 +90,10 @@ function App() {
     () => projectTasks.find((task) => task.id === selectedTaskId) || projectTasks[0] || null,
     [projectTasks, selectedTaskId]
   );
+  const projectLogs = useMemo(() => {
+    const taskIds = new Set(projectTasks.map((task) => task.id));
+    return logs.filter((log) => !log.task_id || taskIds.has(log.task_id));
+  }, [logs, projectTasks]);
   const imageAssets = useMemo(
     () => projectAssets.filter((asset) => asset.asset_type === "image"),
     [projectAssets]
@@ -95,16 +101,18 @@ function App() {
 
   async function loadAll() {
     setError("");
-    const [projectData, templateData, providerData, runtimeData] = await Promise.all([
+    const [projectData, templateData, providerData, runtimeData, logData] = await Promise.all([
       api.listProjects(),
       api.listTemplates(),
       api.providers(),
-      api.runtime()
+      api.runtime(),
+      api.listLogs()
     ]);
     setProjects(projectData);
     setTemplates(templateData);
     setProviders(providerData.providers || []);
     setRuntime(runtimeData);
+    setLogs(logData);
     const nextProjectId = selectedProjectId || projectData[0]?.id || "";
     if (nextProjectId) {
       setSelectedProjectId(nextProjectId);
@@ -125,14 +133,16 @@ function App() {
 
   async function refreshProjectData(projectId = currentProjectId) {
     if (!projectId) return;
-    const [shotData, assetData, taskData] = await Promise.all([
+    const [shotData, assetData, taskData, logData] = await Promise.all([
       api.listShots(projectId),
       api.listAssets(projectId),
-      api.listTasks(projectId)
+      api.listTasks(projectId),
+      api.listLogs()
     ]);
     setShots(shotData);
     setAssets(assetData);
     setTasks(taskData);
+    setLogs(logData);
   }
 
   async function runAction(action) {
@@ -156,6 +166,7 @@ function App() {
     const timer = window.setInterval(() => {
       api.listTasks(currentProjectId).then(setTasks).catch(() => undefined);
       api.listAssets(currentProjectId).then(setAssets).catch(() => undefined);
+      api.listLogs().then(setLogs).catch(() => undefined);
     }, 3000);
     return () => window.clearInterval(timer);
   }, [currentProjectId]);
@@ -439,6 +450,39 @@ function App() {
     });
   }
 
+  async function handleRerunTask(task) {
+    await runAction(async () => {
+      const create = task.task_type === "image" ? api.createImageTask : api.createVideoTask;
+      const createdTask = await create({
+        project_id: task.project_id,
+        shot_id: task.shot_id,
+        provider: task.provider,
+        model: task.model,
+        prompt: task.prompt,
+        params: task.params,
+        reference_asset_ids: task.reference_asset_ids,
+        max_retries: task.max_retries
+      });
+      setSelectedTaskId(createdTask.id);
+      setActiveTab("tasks");
+      await refreshProjectData();
+    });
+  }
+
+  async function handleSaveTaskAsTemplate(task) {
+    await runAction(async () => {
+      const template = await api.createTemplate({
+        name: `${task.task_type === "image" ? "生图" : "生视频"}任务模板`,
+        category: task.task_type,
+        content: task.prompt,
+        variables: [],
+        notes: `由任务 ${task.id} 保存，provider=${task.provider}, model=${task.model}`
+      });
+      setTemplates([template, ...templates]);
+      setActiveTab("templates");
+    });
+  }
+
   function applyTemplate(template, target) {
     if (target === "image") {
       setImagePrompt(template.content);
@@ -685,7 +729,7 @@ function App() {
                   </label>
                   <button className="primary" type="submit">上传素材</button>
                 </form>
-                <AssetDetail asset={selectedAsset} assets={projectAssets} tasks={projectTasks} />
+                <AssetDetail asset={selectedAsset} assets={projectAssets} tasks={projectTasks} onRerunTask={handleRerunTask} />
               </RequireProject>
             </Panel>
             <Panel title="素材库">
@@ -943,9 +987,21 @@ function App() {
               </div>
             </Panel>
             <Panel title="任务详情">
-              <TaskDetail task={selectedTask} logs={taskLogs} assets={projectAssets} />
+              <TaskDetail
+                task={selectedTask}
+                logs={taskLogs}
+                assets={projectAssets}
+                onRerunTask={handleRerunTask}
+                onSaveTemplate={handleSaveTaskAsTemplate}
+              />
             </Panel>
           </section>
+        )}
+
+        {activeTab === "logs" && (
+          <Panel title="成本和日志" subtitle="先按本地任务和 API 调用日志做基础统计，真实成本接平台后再替换估算。">
+            <LogDashboard tasks={projectTasks} logs={projectLogs} />
+          </Panel>
         )}
 
         {activeTab === "settings" && (
@@ -1161,7 +1217,7 @@ function AssetGrid({ assets, selectedAssetId, onOpen, onSelect }) {
   );
 }
 
-function AssetDetail({ asset, assets, tasks }) {
+function AssetDetail({ asset, assets, tasks, onRerunTask }) {
   if (!asset) {
     return <div className="empty-state detail-empty">选择一个素材后查看来源、参数和上游参考。</div>;
   }
@@ -1215,13 +1271,16 @@ function AssetDetail({ asset, assets, tasks }) {
         <div className="detail-block">
           <strong>生成任务</strong>
           <p>{sourceTask.task_type === "image" ? "生图" : "生视频"} · {sourceTask.status} · {sourceTask.model}</p>
+          <div className="button-row">
+            <button type="button" onClick={() => onRerunTask(sourceTask)}>复制参数重跑</button>
+          </div>
         </div>
       ) : null}
     </section>
   );
 }
 
-function TaskDetail({ task, logs, assets }) {
+function TaskDetail({ task, logs, assets, onRerunTask, onSaveTemplate }) {
   if (!task) {
     return <div className="empty-state">暂无任务。创建生图或生视频任务后会显示在这里。</div>;
   }
@@ -1243,6 +1302,13 @@ function TaskDetail({ task, logs, assets }) {
         <dt>耗费</dt>
         <dd>{task.estimated_cost}</dd>
       </dl>
+
+      <div className="button-row">
+        <button type="button" onClick={() => onRerunTask(task)}>复制参数重跑</button>
+        {task.status === "succeeded" ? (
+          <button type="button" onClick={() => onSaveTemplate(task)}>保存为模板</button>
+        ) : null}
+      </div>
 
       <div className="detail-block">
         <strong>提示词</strong>
@@ -1301,6 +1367,44 @@ function TaskDetail({ task, logs, assets }) {
   );
 }
 
+function LogDashboard({ tasks, logs }) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayLogs = logs.filter((log) => log.started_at.slice(0, 10) === todayKey);
+  const succeeded = tasks.filter((task) => task.status === "succeeded").length;
+  const failed = tasks.filter((task) => task.status === "failed").length;
+  const successRate = tasks.length ? Math.round((succeeded / tasks.length) * 100) : 0;
+  const estimatedCost = logs.reduce((total, log) => total + Number(log.estimated_cost || 0), 0);
+  const modelStats = countBy(tasks, "model");
+  const mostUsedModel = modelStats[0]?.name || "暂无";
+
+  return (
+    <div className="dashboard">
+      <div className="metric-grid">
+        <Metric label="今日调用" value={todayLogs.length} />
+        <Metric label="本项目任务" value={tasks.length} />
+        <Metric label="成功率" value={`${successRate}%`} />
+        <Metric label="失败任务" value={failed} />
+      </div>
+      <div className="metric-grid">
+        <Metric label="最常用模型" value={mostUsedModel} />
+        <Metric label="预估消耗" value={estimatedCost.toFixed(2)} />
+        <Metric label="日志总数" value={logs.length} />
+        <Metric label="成功任务" value={succeeded} />
+      </div>
+      <div className="log-list">
+        {logs.map((log) => (
+          <article className="log-item" key={log.id}>
+            <span className={`status ${log.status}`}>{log.status}</span>
+            <strong>{log.model}</strong>
+            <span>{log.duration_ms}ms</span>
+            <p>{log.endpoint}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function splitList(value) {
   if (!value) return [];
   return value
@@ -1329,6 +1433,17 @@ function normalizedVideoParams(params) {
 function clampNumber(value, min, max) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(value, max));
+}
+
+function countBy(items, field) {
+  const counts = new Map();
+  for (const item of items) {
+    const value = item[field] || "unknown";
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count);
 }
 
 export default App;
