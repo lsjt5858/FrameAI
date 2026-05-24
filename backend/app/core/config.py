@@ -50,6 +50,22 @@ class Settings:
     dashscope_image_video_model: str = os.getenv("DASHSCOPE_IMAGE_VIDEO_MODEL", "wan2.7-i2v")
     dashscope_poll_interval_seconds: float = float(os.getenv("DASHSCOPE_POLL_INTERVAL_SECONDS", "15"))
     dashscope_timeout_seconds: float = float(os.getenv("DASHSCOPE_TIMEOUT_SECONDS", "600"))
+    volcengine_api_key: str = os.getenv("VOLCENGINE_API_KEY", "")
+    volcengine_base_url: str = os.getenv(
+        "VOLCENGINE_BASE_URL",
+        "https://ark.cn-beijing.volces.com/api/v3",
+    ).rstrip("/")
+    volcengine_image_model: str = os.getenv("VOLCENGINE_IMAGE_MODEL", "doubao-seedream-3-0-t2i-250415")
+    volcengine_text_video_model: str = os.getenv(
+        "VOLCENGINE_TEXT_VIDEO_MODEL",
+        "doubao-seedance-1-0-lite-t2v-250428",
+    )
+    volcengine_image_video_model: str = os.getenv(
+        "VOLCENGINE_IMAGE_VIDEO_MODEL",
+        "doubao-seedance-1-0-pro-250528",
+    )
+    volcengine_poll_interval_seconds: float = float(os.getenv("VOLCENGINE_POLL_INTERVAL_SECONDS", "15"))
+    volcengine_timeout_seconds: float = float(os.getenv("VOLCENGINE_TIMEOUT_SECONDS", "900"))
     cors_origins: list[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

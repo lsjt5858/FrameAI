@@ -333,7 +333,17 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 ```bash
 DASHSCOPE_API_KEY=...
 DASHSCOPE_REGION=intl
-DASHSCOPE_VIDEO_MODEL=wan2.6-i2v
+DASHSCOPE_TEXT_VIDEO_MODEL=wan2.7-t2v
+DASHSCOPE_IMAGE_VIDEO_MODEL=wan2.7-i2v
+```
+
+国内模型可配置火山方舟 / 豆包：
+
+```bash
+VOLCENGINE_API_KEY=...
+VOLCENGINE_IMAGE_MODEL=doubao-seedream-3-0-t2i-250415
+VOLCENGINE_TEXT_VIDEO_MODEL=doubao-seedance-1-0-lite-t2v-250428
+VOLCENGINE_IMAGE_VIDEO_MODEL=doubao-seedance-1-0-pro-250528
 ```
 
 注意：云端图生视频通常需要公网可访问的图片 URL。本地 `storage/` 文件不能直接被外部平台拉取，如需图生视频或首尾帧视频，需要配置：
