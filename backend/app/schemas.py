@@ -96,6 +96,7 @@ class AssetOut(BaseModel):
     upstream_asset_ids: list[str]
     task_id: str | None = None
     is_selected: bool
+    review_status: str
     created_at: str
 
 
@@ -104,6 +105,7 @@ class AssetUpdate(BaseModel):
     project_id: str | None = None
     shot_id: str | None = None
     is_selected: bool | None = None
+    review_status: str | None = None
 
 
 class PromptTemplateCreate(BaseModel):
@@ -181,4 +183,3 @@ class ApiCallLogOut(BaseModel):
     started_at: str
     finished_at: str
     duration_ms: int
-

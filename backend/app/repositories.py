@@ -252,8 +252,8 @@ def create_asset(data: dict[str, Any]) -> dict[str, Any]:
             INSERT INTO assets (
                 id, project_id, shot_id, name, asset_type, file_path, mime_type,
                 source, provider, model, prompt, params, upstream_asset_ids,
-                task_id, is_selected, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                task_id, is_selected, review_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 asset_id,
@@ -271,6 +271,7 @@ def create_asset(data: dict[str, Any]) -> dict[str, Any]:
                 _dump(data.get("upstream_asset_ids") or []),
                 data.get("task_id"),
                 1 if data.get("is_selected") else 0,
+                data.get("review_status") or "unreviewed",
                 now,
             ),
         )
@@ -283,7 +284,7 @@ def update_asset(asset_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     if not existing:
         raise _not_found("asset", asset_id)
 
-    allowed = {"name", "project_id", "shot_id", "is_selected"}
+    allowed = {"name", "project_id", "shot_id", "is_selected", "review_status"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if "is_selected" in updates:
         updates["is_selected"] = 1 if updates["is_selected"] else 0

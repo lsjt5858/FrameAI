@@ -94,6 +94,7 @@ def init_db() -> None:
                 upstream_asset_ids TEXT NOT NULL DEFAULT '[]',
                 task_id TEXT REFERENCES generation_tasks(id) ON DELETE SET NULL,
                 is_selected INTEGER NOT NULL DEFAULT 0,
+                review_status TEXT NOT NULL DEFAULT 'unreviewed',
                 created_at TEXT NOT NULL
             );
 
@@ -160,6 +161,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_tasks_project ON generation_tasks(project_id);
             """
         )
+        _ensure_column(conn, "assets", "review_status", "TEXT NOT NULL DEFAULT 'unreviewed'")
         _seed_prompt_templates(conn)
         conn.commit()
 
@@ -202,3 +204,8 @@ def _seed_prompt_templates(conn: sqlite3.Connection) -> None:
             (new_id("tpl"), name, category, content, now, now),
         )
 
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

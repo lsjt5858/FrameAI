@@ -47,6 +47,8 @@ function App() {
   const [templateForm, setTemplateForm] = useState(EMPTY_TEMPLATE);
   const [editingTemplateId, setEditingTemplateId] = useState("");
   const [templateEditForm, setTemplateEditForm] = useState(EMPTY_TEMPLATE);
+  const [templateApplyId, setTemplateApplyId] = useState("");
+  const [templateVariableValues, setTemplateVariableValues] = useState({});
   const [imagePrompt, setImagePrompt] = useState("");
   const [videoPrompt, setVideoPrompt] = useState("");
   const [imageParams, setImageParams] = useState(EMPTY_IMAGE_PARAMS);
@@ -483,12 +485,19 @@ function App() {
     });
   }
 
-  function applyTemplate(template, target) {
+  function startApplyTemplate(template) {
+    const variables = getTemplateVariables(template);
+    setTemplateApplyId(template.id);
+    setTemplateVariableValues(Object.fromEntries(variables.map((variable) => [variable, ""])));
+  }
+
+  function applyTemplate(template, target, values = {}) {
+    const content = renderTemplate(template.content, values);
     if (target === "image") {
-      setImagePrompt(template.content);
+      setImagePrompt(content);
       setActiveTab("generate");
     } else {
-      setVideoPrompt(template.content);
+      setVideoPrompt(content);
       setActiveTab("generate");
     }
   }
@@ -754,6 +763,13 @@ function App() {
                   await api.updateAsset(asset.id, { is_selected: !asset.is_selected });
                   await refreshProjectData();
                 })}
+                onReview={(asset, review_status) => runAction(async () => {
+                  await api.updateAsset(asset.id, {
+                    review_status,
+                    is_selected: review_status === "liked" ? true : asset.is_selected
+                  });
+                  await refreshProjectData();
+                })}
               />
             </Panel>
           </section>
@@ -851,9 +867,35 @@ function App() {
                     <div className="button-row">
                       <button type="button" onClick={() => applyTemplate(template, "image")}>套到生图</button>
                       <button type="button" onClick={() => applyTemplate(template, "video")}>套到视频</button>
+                      <button type="button" onClick={() => startApplyTemplate(template)}>填写变量</button>
                       <button type="button" onClick={() => startEditTemplate(template)}>编辑</button>
                       <button className="danger" type="button" onClick={() => handleDeleteTemplate(template)}>删除</button>
                     </div>
+                    {templateApplyId === template.id ? (
+                      <div className="variable-editor">
+                        {getTemplateVariables(template).length ? (
+                          getTemplateVariables(template).map((variable) => (
+                            <label key={variable}>
+                              {variable}
+                              <input
+                                value={templateVariableValues[variable] || ""}
+                                onChange={(event) => setTemplateVariableValues({
+                                  ...templateVariableValues,
+                                  [variable]: event.target.value
+                                })}
+                              />
+                            </label>
+                          ))
+                        ) : (
+                          <p>这个模板没有变量。</p>
+                        )}
+                        <pre>{renderTemplate(template.content, templateVariableValues)}</pre>
+                        <div className="button-row">
+                          <button type="button" onClick={() => applyTemplate(template, "image", templateVariableValues)}>套到生图</button>
+                          <button type="button" onClick={() => applyTemplate(template, "video", templateVariableValues)}>套到视频</button>
+                        </div>
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -1184,7 +1226,7 @@ function ShotResultGrid({ title, assets, selectedId, emptyText, onSelect }) {
   );
 }
 
-function AssetGrid({ assets, selectedAssetId, onOpen, onSelect }) {
+function AssetGrid({ assets, selectedAssetId, onOpen, onSelect, onReview }) {
   if (!assets.length) {
     return <div className="empty-state">暂无素材。上传参考图后会显示在这里。</div>;
   }
@@ -1202,13 +1244,16 @@ function AssetGrid({ assets, selectedAssetId, onOpen, onSelect }) {
           </div>
           <div className="asset-body">
             <strong>{asset.name}</strong>
-            <span>{asset.source} · {asset.asset_type}</span>
+            <span>{asset.source} · {asset.asset_type} · {reviewLabel(asset.review_status)}</span>
             {asset.prompt ? <p>{asset.prompt}</p> : null}
             <div className="button-row">
               <button type="button" onClick={() => onOpen(asset)}>详情</button>
               <button type="button" onClick={() => onSelect(asset)}>
                 {asset.is_selected ? "取消入选" : "标记入选"}
               </button>
+              <button type="button" onClick={() => onReview(asset, "liked")}>喜欢</button>
+              <button type="button" onClick={() => onReview(asset, "disliked")}>不喜欢</button>
+              <button className="danger" type="button" onClick={() => onReview(asset, "discarded")}>废弃</button>
             </div>
           </div>
         </article>
@@ -1234,6 +1279,8 @@ function AssetDetail({ asset, assets, tasks, onRerunTask }) {
       <dl className="metadata-list">
         <dt>类型</dt>
         <dd>{asset.asset_type}</dd>
+        <dt>评审</dt>
+        <dd>{reviewLabel(asset.review_status)}</dd>
         <dt>来源</dt>
         <dd>{asset.source}</dd>
         <dt>平台</dt>
@@ -1444,6 +1491,29 @@ function countBy(items, field) {
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((left, right) => right.count - left.count);
+}
+
+function reviewLabel(status) {
+  const labels = {
+    unreviewed: "未评审",
+    liked: "喜欢",
+    disliked: "不喜欢",
+    discarded: "废弃"
+  };
+  return labels[status] || status || "未评审";
+}
+
+function getTemplateVariables(template) {
+  const declared = template.variables || [];
+  const detected = [...template.content.matchAll(/{{\s*([A-Za-z0-9_.-]+)\s*}}/g)].map((match) => match[1]);
+  return [...new Set([...declared, ...detected])];
+}
+
+function renderTemplate(content, values) {
+  return content.replace(/{{\s*([A-Za-z0-9_.-]+)\s*}}/g, (match, key) => {
+    const value = values[key];
+    return value ? value : match;
+  });
 }
 
 export default App;

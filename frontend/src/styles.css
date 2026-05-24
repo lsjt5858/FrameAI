@@ -422,6 +422,33 @@ textarea {
   color: #475467;
 }
 
+.variable-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border-top: 1px solid #dce3eb;
+  padding-top: 12px;
+}
+
+.variable-editor label {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.variable-editor pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid #dce3eb;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
 .tag-row,
 .button-row {
   display: flex;
