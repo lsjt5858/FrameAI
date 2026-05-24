@@ -59,6 +59,10 @@ textarea {
   outline: none;
 }
 
+input[type="checkbox"] {
+  width: auto;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -211,6 +215,57 @@ textarea {
   font-weight: 650;
 }
 
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field-grid label {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.checkbox-field {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid #dce3eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.checkbox-field legend {
+  color: #344054;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.checkbox-field p {
+  margin: 0;
+  color: #667085;
+}
+
+.checkbox-grid {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.checkbox-grid label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: #475467;
+  font-weight: 500;
+}
+
 .primary {
   background: #14213d;
   border-color: #14213d;
@@ -337,6 +392,14 @@ textarea {
 
 .shot-item {
   grid-template-columns: 54px 1fr;
+}
+
+.shot-card {
+  align-items: start;
+}
+
+.shot-content {
+  min-width: 0;
 }
 
 .shot-number {
@@ -548,6 +611,82 @@ textarea {
   color: #475569;
 }
 
+.status.draft {
+  background: #eef2f6;
+  color: #475467;
+}
+
+.status.image_selected {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.status.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.result-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.result-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #344054;
+}
+
+.result-heading span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.result-tile {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  overflow: hidden;
+  padding: 0;
+  background: #f8fafc;
+}
+
+.result-tile.selected {
+  border-color: #2a9d8f;
+  box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.1);
+}
+
+.result-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-tile span {
+  padding: 8px;
+  color: #475467;
+  font-size: 13px;
+}
+
+.muted-text,
+.shot-notes {
+  margin: 0;
+  color: #667085;
+}
+
 .task-detail {
   display: grid;
   gap: 14px;
@@ -649,6 +788,10 @@ textarea {
   .task-row,
   .shot-item,
   .project-item {
+    grid-template-columns: 1fr;
+  }
+
+  .field-grid {
     grid-template-columns: 1fr;
   }
 

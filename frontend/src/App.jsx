@@ -16,11 +16,15 @@ const EMPTY_SHOT = {
   title: "",
   story: "",
   characters: "",
+  reference_asset_ids: [],
   image_prompt: "",
   video_prompt: "",
+  status: "draft",
   notes: ""
 };
 const EMPTY_TEMPLATE = { name: "", category: "image", content: "", variables: "", notes: "" };
+const EMPTY_IMAGE_PARAMS = { aspect_ratio: "16:9", resolution: "1280x720", count: 1, max_retries: 1 };
+const EMPTY_VIDEO_PARAMS = { duration: 5, motion: "medium", camera_move: "static", count: 1, max_retries: 1 };
 
 function App() {
   const [activeTab, setActiveTab] = useState("projects");
@@ -36,11 +40,15 @@ function App() {
   const [editingProjectId, setEditingProjectId] = useState("");
   const [projectEditForm, setProjectEditForm] = useState(EMPTY_PROJECT);
   const [shotForm, setShotForm] = useState(EMPTY_SHOT);
+  const [editingShotId, setEditingShotId] = useState("");
+  const [shotEditForm, setShotEditForm] = useState(EMPTY_SHOT);
   const [templateForm, setTemplateForm] = useState(EMPTY_TEMPLATE);
   const [editingTemplateId, setEditingTemplateId] = useState("");
   const [templateEditForm, setTemplateEditForm] = useState(EMPTY_TEMPLATE);
   const [imagePrompt, setImagePrompt] = useState("");
   const [videoPrompt, setVideoPrompt] = useState("");
+  const [imageParams, setImageParams] = useState(EMPTY_IMAGE_PARAMS);
+  const [videoParams, setVideoParams] = useState(EMPTY_VIDEO_PARAMS);
   const [referenceAssetId, setReferenceAssetId] = useState("");
   const [assetFile, setAssetFile] = useState(null);
   const [assetName, setAssetName] = useState("");
@@ -79,6 +87,10 @@ function App() {
   const selectedTask = useMemo(
     () => projectTasks.find((task) => task.id === selectedTaskId) || projectTasks[0] || null,
     [projectTasks, selectedTaskId]
+  );
+  const imageAssets = useMemo(
+    () => projectAssets.filter((asset) => asset.asset_type === "image"),
+    [projectAssets]
   );
 
   async function loadAll() {
@@ -225,11 +237,52 @@ function App() {
         title: shotForm.title,
         story: shotForm.story,
         characters: splitList(shotForm.characters),
+        reference_asset_ids: shotForm.reference_asset_ids,
         image_prompt: shotForm.image_prompt,
         video_prompt: shotForm.video_prompt,
+        status: shotForm.status,
         notes: shotForm.notes
       });
       setShotForm(EMPTY_SHOT);
+      await refreshProjectData();
+    });
+  }
+
+  function startEditShot(shot) {
+    setEditingShotId(shot.id);
+    setShotEditForm({
+      title: shot.title,
+      story: shot.story,
+      characters: shot.characters.join(", "),
+      reference_asset_ids: shot.reference_asset_ids,
+      image_prompt: shot.image_prompt,
+      video_prompt: shot.video_prompt,
+      status: shot.status,
+      notes: shot.notes || ""
+    });
+  }
+
+  function cancelEditShot() {
+    setEditingShotId("");
+    setShotEditForm(EMPTY_SHOT);
+  }
+
+  async function handleUpdateShot(event) {
+    event.preventDefault();
+    if (!editingShotId) return;
+
+    await runAction(async () => {
+      await api.updateShot(editingShotId, {
+        title: shotEditForm.title,
+        story: shotEditForm.story,
+        characters: splitList(shotEditForm.characters),
+        reference_asset_ids: shotEditForm.reference_asset_ids,
+        image_prompt: shotEditForm.image_prompt,
+        video_prompt: shotEditForm.video_prompt,
+        status: shotEditForm.status,
+        notes: shotEditForm.notes
+      });
+      cancelEditShot();
       await refreshProjectData();
     });
   }
@@ -318,18 +371,70 @@ function App() {
       const provider = providers[0]?.id || "mock";
       const model = type === "image" ? "mock-image-v1" : "mock-video-v1";
       const reference_asset_ids = referenceAssetId ? [referenceAssetId] : [];
+      const params = type === "image" ? normalizedImageParams(imageParams) : normalizedVideoParams(videoParams);
+      const max_retries = type === "image" ? Number(imageParams.max_retries) : Number(videoParams.max_retries);
       const create = type === "image" ? api.createImageTask : api.createVideoTask;
       await create({
         project_id: currentProjectId,
         provider,
         model,
         prompt,
-        params: { count: 1 },
-        reference_asset_ids
+        params,
+        reference_asset_ids,
+        max_retries: clampNumber(max_retries, 0, 5)
       });
       if (type === "image") setImagePrompt("");
       if (type === "video") setVideoPrompt("");
       setActiveTab("tasks");
+      await refreshProjectData();
+    });
+  }
+
+  async function handleCreateShotTask(shot, type) {
+    await runAction(async () => {
+      const prompt = type === "image" ? shot.image_prompt || shot.story : shot.video_prompt || shot.story;
+      if (!prompt.trim()) {
+        throw new Error(type === "image" ? "请先填写分镜生图提示词。" : "请先填写分镜生视频提示词。");
+      }
+
+      const provider = providers[0]?.id || "mock";
+      const model = type === "image" ? "mock-image-v1" : "mock-video-v1";
+      const reference_asset_ids = type === "image"
+        ? shot.reference_asset_ids
+        : [shot.selected_image_asset_id || shot.reference_asset_ids[0]].filter(Boolean);
+      const params = type === "image" ? normalizedImageParams(imageParams) : normalizedVideoParams(videoParams);
+      const max_retries = type === "image" ? Number(imageParams.max_retries) : Number(videoParams.max_retries);
+      const create = type === "image" ? api.createImageTask : api.createVideoTask;
+
+      await create({
+        project_id: currentProjectId,
+        shot_id: shot.id,
+        provider,
+        model,
+        prompt,
+        params,
+        reference_asset_ids,
+        max_retries: clampNumber(max_retries, 0, 5)
+      });
+      setActiveTab("tasks");
+      await refreshProjectData();
+    });
+  }
+
+  async function handleSelectShotAsset(shot, asset, target) {
+    await runAction(async () => {
+      const payload = target === "image"
+        ? { selected_image_asset_id: asset.id, status: "image_selected" }
+        : { selected_video_asset_id: asset.id, status: "approved" };
+      await api.updateShot(shot.id, payload);
+      await api.updateAsset(asset.id, { is_selected: true });
+      await refreshProjectData();
+    });
+  }
+
+  async function handleSetShotStatus(shot, status) {
+    await runAction(async () => {
+      await api.updateShot(shot.id, { status });
       await refreshProjectData();
     });
   }
@@ -462,7 +567,7 @@ function App() {
 
         {activeTab === "shots" && (
           <section className="page-grid wide-left">
-            <Panel title="新建分镜" subtitle="分镜是后续生图、生视频和结果筛选的主线。">
+            <Panel title="分镜编辑" subtitle="分镜是后续生图、生视频和结果筛选的主线。">
               <RequireProject project={selectedProject}>
                 <form className="stack" onSubmit={handleCreateShot}>
                   <label>
@@ -477,6 +582,11 @@ function App() {
                     角色
                     <input value={shotForm.characters} onChange={(event) => setShotForm({ ...shotForm, characters: event.target.value })} placeholder="多个角色用逗号分隔" />
                   </label>
+                  <ReferenceAssetPicker
+                    assets={imageAssets}
+                    selectedIds={shotForm.reference_asset_ids}
+                    onChange={(reference_asset_ids) => setShotForm({ ...shotForm, reference_asset_ids })}
+                  />
                   <label>
                     生图提示词
                     <textarea value={shotForm.image_prompt} onChange={(event) => setShotForm({ ...shotForm, image_prompt: event.target.value })} rows={4} />
@@ -487,22 +597,73 @@ function App() {
                   </label>
                   <button className="primary" type="submit">保存分镜</button>
                 </form>
+
+                {editingShotId ? (
+                  <form className="stack edit-form" onSubmit={handleUpdateShot}>
+                    <div className="panel-heading compact-heading">
+                      <h2>编辑分镜</h2>
+                      <p>调整剧情、参考素材、提示词和当前状态。</p>
+                    </div>
+                    <label>
+                      镜头标题
+                      <input value={shotEditForm.title} onChange={(event) => setShotEditForm({ ...shotEditForm, title: event.target.value })} />
+                    </label>
+                    <label>
+                      剧情描述
+                      <textarea value={shotEditForm.story} onChange={(event) => setShotEditForm({ ...shotEditForm, story: event.target.value })} rows={4} />
+                    </label>
+                    <label>
+                      角色
+                      <input value={shotEditForm.characters} onChange={(event) => setShotEditForm({ ...shotEditForm, characters: event.target.value })} placeholder="多个角色用逗号分隔" />
+                    </label>
+                    <ReferenceAssetPicker
+                      assets={imageAssets}
+                      selectedIds={shotEditForm.reference_asset_ids}
+                      onChange={(reference_asset_ids) => setShotEditForm({ ...shotEditForm, reference_asset_ids })}
+                    />
+                    <label>
+                      生图提示词
+                      <textarea value={shotEditForm.image_prompt} onChange={(event) => setShotEditForm({ ...shotEditForm, image_prompt: event.target.value })} rows={4} />
+                    </label>
+                    <label>
+                      生视频提示词
+                      <textarea value={shotEditForm.video_prompt} onChange={(event) => setShotEditForm({ ...shotEditForm, video_prompt: event.target.value })} rows={4} />
+                    </label>
+                    <label>
+                      状态
+                      <select value={shotEditForm.status} onChange={(event) => setShotEditForm({ ...shotEditForm, status: event.target.value })}>
+                        <option value="draft">草稿</option>
+                        <option value="image_selected">已选图</option>
+                        <option value="approved">已通过</option>
+                        <option value="rejected">已废弃</option>
+                      </select>
+                    </label>
+                    <label>
+                      备注
+                      <textarea value={shotEditForm.notes} onChange={(event) => setShotEditForm({ ...shotEditForm, notes: event.target.value })} rows={3} />
+                    </label>
+                    <div className="button-row">
+                      <button className="primary" type="submit">保存修改</button>
+                      <button type="button" onClick={cancelEditShot}>取消</button>
+                    </div>
+                  </form>
+                ) : null}
               </RequireProject>
             </Panel>
             <Panel title="分镜列表">
               <div className="shot-list">
                 {projectShots.map((shot) => (
-                  <article className="shot-item" key={shot.id}>
-                    <div className="shot-number">#{shot.shot_number}</div>
-                    <div>
-                      <h3>{shot.title || "未命名镜头"}</h3>
-                      <p>{shot.story || "未填写剧情"}</p>
-                      <div className="tag-row">
-                        {shot.characters.map((character) => <span className="tag" key={character}>{character}</span>)}
-                        <span className="tag">{shot.status}</span>
-                      </div>
-                    </div>
-                  </article>
+                  <ShotCard
+                    key={shot.id}
+                    shot={shot}
+                    assets={projectAssets}
+                    onEdit={startEditShot}
+                    onCreateImage={() => handleCreateShotTask(shot, "image")}
+                    onCreateVideo={() => handleCreateShotTask(shot, "video")}
+                    onSelectImage={(asset) => handleSelectShotAsset(shot, asset, "image")}
+                    onSelectVideo={(asset) => handleSelectShotAsset(shot, asset, "video")}
+                    onSetStatus={(status) => handleSetShotStatus(shot, status)}
+                  />
                 ))}
               </div>
             </Panel>
@@ -665,6 +826,33 @@ function App() {
                     提示词
                     <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} rows={8} />
                   </label>
+                  <div className="field-grid">
+                    <label>
+                      数量
+                      <input type="number" min="1" max="8" value={imageParams.count} onChange={(event) => setImageParams({ ...imageParams, count: event.target.value })} />
+                    </label>
+                    <label>
+                      比例
+                      <select value={imageParams.aspect_ratio} onChange={(event) => setImageParams({ ...imageParams, aspect_ratio: event.target.value })}>
+                        <option value="16:9">16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="1:1">1:1</option>
+                        <option value="4:3">4:3</option>
+                      </select>
+                    </label>
+                    <label>
+                      清晰度
+                      <select value={imageParams.resolution} onChange={(event) => setImageParams({ ...imageParams, resolution: event.target.value })}>
+                        <option value="1280x720">1280x720</option>
+                        <option value="1920x1080">1920x1080</option>
+                        <option value="1024x1024">1024x1024</option>
+                      </select>
+                    </label>
+                    <label>
+                      重试
+                      <input type="number" min="0" max="5" value={imageParams.max_retries} onChange={(event) => setImageParams({ ...imageParams, max_retries: event.target.value })} />
+                    </label>
+                  </div>
                   <button className="primary" type="button" disabled={!imagePrompt} onClick={() => handleCreateTask("image")}>创建生图任务</button>
                 </div>
               </RequireProject>
@@ -685,6 +873,38 @@ function App() {
                     视频提示词
                     <textarea value={videoPrompt} onChange={(event) => setVideoPrompt(event.target.value)} rows={8} />
                   </label>
+                  <div className="field-grid">
+                    <label>
+                      数量
+                      <input type="number" min="1" max="4" value={videoParams.count} onChange={(event) => setVideoParams({ ...videoParams, count: event.target.value })} />
+                    </label>
+                    <label>
+                      时长
+                      <input type="number" min="1" max="20" value={videoParams.duration} onChange={(event) => setVideoParams({ ...videoParams, duration: event.target.value })} />
+                    </label>
+                    <label>
+                      运动幅度
+                      <select value={videoParams.motion} onChange={(event) => setVideoParams({ ...videoParams, motion: event.target.value })}>
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                      </select>
+                    </label>
+                    <label>
+                      镜头运动
+                      <select value={videoParams.camera_move} onChange={(event) => setVideoParams({ ...videoParams, camera_move: event.target.value })}>
+                        <option value="static">固定</option>
+                        <option value="push_in">推进</option>
+                        <option value="pull_out">拉远</option>
+                        <option value="pan_left">左摇</option>
+                        <option value="pan_right">右摇</option>
+                      </select>
+                    </label>
+                    <label>
+                      重试
+                      <input type="number" min="0" max="5" value={videoParams.max_retries} onChange={(event) => setVideoParams({ ...videoParams, max_retries: event.target.value })} />
+                    </label>
+                  </div>
                   <button className="primary" type="button" disabled={!videoPrompt} onClick={() => handleCreateTask("video")}>创建生视频任务</button>
                 </div>
               </RequireProject>
@@ -786,6 +1006,126 @@ function RequireProject({ project, children }) {
     return <div className="empty-state">请先创建一个项目。</div>;
   }
   return children;
+}
+
+function ReferenceAssetPicker({ assets, selectedIds, onChange }) {
+  function toggle(assetId) {
+    if (selectedIds.includes(assetId)) {
+      onChange(selectedIds.filter((id) => id !== assetId));
+    } else {
+      onChange([...selectedIds, assetId]);
+    }
+  }
+
+  return (
+    <fieldset className="checkbox-field">
+      <legend>参考图</legend>
+      {assets.length ? (
+        <div className="checkbox-grid">
+          {assets.map((asset) => (
+            <label key={asset.id}>
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(asset.id)}
+                onChange={() => toggle(asset.id)}
+              />
+              <span>{asset.name}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p>素材库还没有图片素材。</p>
+      )}
+    </fieldset>
+  );
+}
+
+function ShotCard({
+  shot,
+  assets,
+  onEdit,
+  onCreateImage,
+  onCreateVideo,
+  onSelectImage,
+  onSelectVideo,
+  onSetStatus
+}) {
+  const referenceAssets = assets.filter((asset) => shot.reference_asset_ids.includes(asset.id));
+  const imageResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "image");
+  const videoResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "video");
+
+  return (
+    <article className={`shot-item shot-card ${shot.status}`}>
+      <div className="shot-number">#{shot.shot_number}</div>
+      <div className="shot-content">
+        <div className="item-heading">
+          <h3>{shot.title || "未命名镜头"}</h3>
+          <span className={`status ${shot.status}`}>{shot.status}</span>
+        </div>
+        <p>{shot.story || "未填写剧情"}</p>
+        <div className="tag-row">
+          {shot.characters.map((character) => <span className="tag" key={character}>{character}</span>)}
+          {referenceAssets.map((asset) => <span className="tag" key={asset.id}>参考：{asset.name}</span>)}
+        </div>
+
+        <div className="button-row">
+          <button type="button" onClick={() => onEdit(shot)}>编辑</button>
+          <button type="button" onClick={onCreateImage}>一键生图</button>
+          <button type="button" disabled={!shot.selected_image_asset_id && !shot.reference_asset_ids.length} onClick={onCreateVideo}>入选图生视频</button>
+          <button type="button" onClick={() => onSetStatus("approved")}>标记通过</button>
+          <button className="danger" type="button" onClick={() => onSetStatus("rejected")}>废弃</button>
+        </div>
+
+        <ShotResultGrid
+          title="生图结果"
+          assets={imageResults}
+          selectedId={shot.selected_image_asset_id}
+          emptyText="还没有分镜生图结果。"
+          onSelect={onSelectImage}
+        />
+        <ShotResultGrid
+          title="生视频结果"
+          assets={videoResults}
+          selectedId={shot.selected_video_asset_id}
+          emptyText="还没有分镜生视频结果。"
+          onSelect={onSelectVideo}
+        />
+
+        {shot.notes ? <p className="shot-notes">{shot.notes}</p> : null}
+      </div>
+    </article>
+  );
+}
+
+function ShotResultGrid({ title, assets, selectedId, emptyText, onSelect }) {
+  return (
+    <section className="result-block">
+      <div className="result-heading">
+        <strong>{title}</strong>
+        <span>{assets.length}</span>
+      </div>
+      {assets.length ? (
+        <div className="result-grid">
+          {assets.map((asset) => (
+            <button
+              className={`result-tile ${asset.id === selectedId ? "selected" : ""}`}
+              key={asset.id}
+              type="button"
+              onClick={() => onSelect(asset)}
+            >
+              {asset.mime_type.startsWith("image/") ? (
+                <img src={fileUrl(asset.url)} alt={asset.name} />
+              ) : (
+                <span>{asset.name}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-text">{emptyText}</p>
+      )}
+    </section>
+  );
 }
 
 function AssetGrid({ assets, selectedAssetId, onOpen, onSelect }) {
@@ -967,6 +1307,28 @@ function splitList(value) {
     .split(/[,，\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizedImageParams(params) {
+  return {
+    aspect_ratio: params.aspect_ratio,
+    resolution: params.resolution,
+    count: clampNumber(Number(params.count), 1, 8)
+  };
+}
+
+function normalizedVideoParams(params) {
+  return {
+    duration: clampNumber(Number(params.duration), 1, 20),
+    motion: params.motion,
+    camera_move: params.camera_move,
+    count: clampNumber(Number(params.count), 1, 4)
+  };
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(value, max));
 }
 
 export default App;
