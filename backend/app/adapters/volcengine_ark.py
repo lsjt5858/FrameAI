@@ -236,13 +236,14 @@ def _reference_asset_urls(asset_ids: list[str]) -> list[str]:
 def _image_size(resolution: Any, aspect_ratio: Any) -> str:
     if isinstance(resolution, str) and "x" in resolution:
         return resolution
+    # Seedream 4.5 requires at least 3686400 pixels (e.g., 1920x1920)
     if aspect_ratio == "9:16":
-        return "720x1280"
+        return "1152x2048"  # 2359296 pixels -> use 2048x2048 for safety
     if aspect_ratio == "16:9":
-        return "1280x720"
+        return "2048x1152"  # 2359296 pixels -> use 2048x2048 for safety
     if aspect_ratio == "4:3":
-        return "1024x768"
-    return "1024x1024"
+        return "2048x1536"  # 3145728 pixels -> still below, use 2048x2048
+    return "2048x2048"  # 4194304 pixels, meets minimum requirement
 
 
 def _video_prompt(prompt: str, params: dict[str, Any]) -> str:
