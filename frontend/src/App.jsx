@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fileUrl } from "./api/client.js";
 
+const NAV_GROUPS = ["工作台", "素材", "生成", "系统"];
 const NAV_ITEMS = [
-  { id: "projects", label: "项目" },
-  { id: "shots", label: "分镜" },
-  { id: "assets", label: "素材" },
-  { id: "templates", label: "模板" },
-  { id: "generate", label: "生成" },
-  { id: "tasks", label: "任务" },
-  { id: "logs", label: "日志" },
-  { id: "settings", label: "设置" }
+  { id: "overview", label: "总览", hint: "生产概览", group: "工作台" },
+  { id: "projects", label: "项目列表", hint: "创建 / 筛选", group: "工作台" },
+  { id: "project-detail", label: "项目详情", hint: "进度 / 近期", group: "工作台" },
+  { id: "development", label: "剧本开发", hint: "人物 / 拆镜", group: "工作台" },
+  { id: "shots", label: "分镜工作台", hint: "镜头 / 结果", group: "工作台" },
+  { id: "assets", label: "素材库", hint: "筛选 / 评审", group: "素材" },
+  { id: "templates", label: "提示词模板", hint: "变量套用", group: "素材" },
+  { id: "image-gen", label: "生图中心", hint: "模型 / 比例", group: "生成" },
+  { id: "video-gen", label: "生视频中心", hint: "首尾帧 / 运动", group: "生成" },
+  { id: "tasks", label: "任务记录", hint: "队列 / 重跑", group: "系统" },
+  { id: "logs", label: "成本日志", hint: "调用统计", group: "系统" },
+  { id: "settings", label: "设置", hint: "Provider", group: "系统" }
 ];
 
 const EMPTY_PROJECT = { name: "", description: "" };
@@ -24,11 +29,67 @@ const EMPTY_SHOT = {
   notes: ""
 };
 const EMPTY_TEMPLATE = { name: "", category: "image", content: "", variables: "", notes: "" };
-const EMPTY_IMAGE_PARAMS = { aspect_ratio: "16:9", resolution: "1280x720", count: 1, max_retries: 1 };
-const EMPTY_VIDEO_PARAMS = { duration: 5, motion: "medium", camera_move: "static", count: 1, max_retries: 1 };
+const EMPTY_IMAGE_PARAMS = {
+  aspect_ratio: "16:9",
+  resolution: "1280x720",
+  count: 1,
+  max_retries: 1,
+  guidance: 7,
+  negative_prompt: ""
+};
+const EMPTY_VIDEO_PARAMS = {
+  duration: 5,
+  motion: "medium",
+  camera_move: "static",
+  count: 1,
+  max_retries: 1,
+  seed: ""
+};
+
+const DEFAULT_DEVELOPMENT_WORKSPACE = {
+  logline: "",
+  genre: "",
+  targetPlatform: "抖音 / B站",
+  audience: "",
+  worldview: "",
+  visualStyle: "",
+  episodeTitle: "EP01",
+  episodeScript: "场景一：夜晚，主角站在城市天台，远处霓虹闪烁。\n主角：今晚必须拿到那份数据。\n动作：她拉紧外套，转身冲向楼梯。\n\n场景二：地下市场，人群拥挤，道具摊灯光忽明忽暗。\n配角：你来晚了。\n动作：主角停下脚步，发现目标已经出现。",
+  characters: [
+    { name: "主角", role: "主人公", voice: "冷静、克制、关键时刻直接", visual: "年轻女性，短发，深色外套，眼神锐利" },
+    { name: "配角", role: "情报提供者", voice: "话少，带一点讽刺", visual: "戴帽子，旧夹克，随身终端" }
+  ],
+  props: [
+    { name: "数据卡", type: "关键道具", visual: "透明芯片，蓝色微光", usage: "推动任务线索" }
+  ],
+  scenes: [
+    { name: "城市天台", time: "夜晚", mood: "冷、紧张", visual: "霓虹、雨水、远景高楼" },
+    { name: "地下市场", time: "夜晚", mood: "嘈杂、危险", visual: "摊位、蒸汽管道、混乱人群" }
+  ],
+  shotDrafts: [],
+  checklist: {
+    topic: false,
+    bible: false,
+    script: false,
+    visual: false,
+    prompts: false,
+    storage: false,
+    pilot: false
+  }
+};
+
+const DEVELOPMENT_CHECKLIST = [
+  ["topic", "确定故事类型、目标平台和受众画像"],
+  ["bible", "完成人物圣经、关系和语言风格"],
+  ["script", "完成单集剧本并标注场景/动作/对白"],
+  ["visual", "锁定视觉圣经、角色和场景参考"],
+  ["prompts", "建立角色/场景/镜头提示词公式"],
+  ["storage", "建立命名规范和素材存储规则"],
+  ["pilot", "至少跑通第一集：剧本 -> 分镜 -> 出图 -> 审核"]
+];
 
 function App() {
-  const [activeTab, setActiveTab] = useState("projects");
+  const [activeTab, setActiveTab] = useState("overview");
   const [projects, setProjects] = useState([]);
   const [shots, setShots] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -65,6 +126,18 @@ function App() {
   const [taskLogs, setTaskLogs] = useState([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("all");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetReviewFilter, setAssetReviewFilter] = useState("all");
+  const [assetView, setAssetView] = useState("grid");
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState("all");
+  const [selectedShotId, setSelectedShotId] = useState("");
+  const [shotPanel, setShotPanel] = useState("detail");
+  const [showImageAdvanced, setShowImageAdvanced] = useState(false);
+  const [showVideoAdvanced, setShowVideoAdvanced] = useState(false);
+  const [developmentWorkspace, setDevelopmentWorkspace] = useState(loadDevelopmentWorkspace);
+  const [developmentView, setDevelopmentView] = useState("script");
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) || projects[0],
@@ -79,9 +152,30 @@ function App() {
     () => assets.filter((asset) => !currentProjectId || asset.project_id === currentProjectId),
     [assets, currentProjectId]
   );
+  const visibleProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase();
+    return projects.filter((project) => {
+      const matchesSearch = !query
+        || project.name.toLowerCase().includes(query)
+        || (project.description || "").toLowerCase().includes(query);
+      const matchesStatus = projectStatusFilter === "all" || project.status === projectStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [projects, projectSearch, projectStatusFilter]);
   const visibleAssets = useMemo(
-    () => projectAssets.filter((asset) => assetTypeFilter === "all" || asset.asset_type === assetTypeFilter),
-    [projectAssets, assetTypeFilter]
+    () => {
+      const query = assetSearch.trim().toLowerCase();
+      return projectAssets.filter((asset) => {
+        const matchesType = assetTypeFilter === "all" || asset.asset_type === assetTypeFilter;
+        const matchesReview = assetReviewFilter === "all" || asset.review_status === assetReviewFilter;
+        const matchesSearch = !query
+          || asset.name.toLowerCase().includes(query)
+          || (asset.prompt || "").toLowerCase().includes(query)
+          || (asset.model || "").toLowerCase().includes(query);
+        return matchesType && matchesReview && matchesSearch;
+      });
+    },
+    [projectAssets, assetTypeFilter, assetReviewFilter, assetSearch]
   );
   const selectedAsset = useMemo(
     () => projectAssets.find((asset) => asset.id === selectedAssetId) || null,
@@ -90,6 +184,16 @@ function App() {
   const projectTasks = useMemo(
     () => tasks.filter((task) => !currentProjectId || task.project_id === currentProjectId),
     [tasks, currentProjectId]
+  );
+  const selectedShot = useMemo(
+    () => projectShots.find((shot) => shot.id === selectedShotId) || projectShots[0] || null,
+    [projectShots, selectedShotId]
+  );
+  const filteredTemplates = useMemo(
+    () => templates.filter((template) => (
+      templateCategoryFilter === "all" || template.category === templateCategoryFilter
+    )),
+    [templates, templateCategoryFilter]
   );
   const selectedTask = useMemo(
     () => projectTasks.find((task) => task.id === selectedTaskId) || projectTasks[0] || null,
@@ -110,6 +214,14 @@ function App() {
   const videoProviders = useMemo(
     () => providers.filter((provider) => ["video", "image_video"].includes(provider.kind)),
     [providers]
+  );
+  const runningTasks = useMemo(
+    () => projectTasks.filter((task) => ["pending", "running"].includes(task.status)),
+    [projectTasks]
+  );
+  const selectedAssetsCount = useMemo(
+    () => projectAssets.filter((asset) => asset.is_selected).length,
+    [projectAssets]
   );
 
   async function loadAll() {
@@ -193,6 +305,93 @@ function App() {
     api.listTaskLogs(selectedTask.id).then(setTaskLogs).catch(() => setTaskLogs([]));
     return undefined;
   }, [selectedTask?.id]);
+
+  useEffect(() => {
+    if (!projectShots.length) {
+      setSelectedShotId("");
+      return;
+    }
+    if (!projectShots.some((shot) => shot.id === selectedShotId)) {
+      setSelectedShotId(projectShots[0].id);
+    }
+  }, [projectShots, selectedShotId]);
+
+  useEffect(() => {
+    saveDevelopmentWorkspace(developmentWorkspace);
+  }, [developmentWorkspace]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeTab]);
+
+  function updateDevelopmentField(field, value) {
+    setDevelopmentWorkspace((workspace) => ({ ...workspace, [field]: value }));
+  }
+
+  function updateDevelopmentListItem(listName, index, field, value) {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      [listName]: workspace[listName].map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [field]: value } : item
+      ))
+    }));
+  }
+
+  function addDevelopmentListItem(listName, item) {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      [listName]: [...workspace[listName], item]
+    }));
+  }
+
+  function removeDevelopmentListItem(listName, index) {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      [listName]: workspace[listName].filter((_, itemIndex) => itemIndex !== index)
+    }));
+  }
+
+  function handleBuildShotDrafts() {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      shotDrafts: buildShotDraftsFromScript(workspace)
+    }));
+    setDevelopmentView("shots");
+  }
+
+  async function handleImportShotDrafts() {
+    if (!currentProjectId) {
+      setError("请先创建或选择一个项目，再导入分镜。");
+      return;
+    }
+
+    const drafts = developmentWorkspace.shotDrafts.length
+      ? developmentWorkspace.shotDrafts
+      : buildShotDraftsFromScript(developmentWorkspace);
+
+    await runAction(async () => {
+      for (const draft of drafts) {
+        await api.createShot({
+          project_id: currentProjectId,
+          title: draft.title,
+          story: draft.story,
+          characters: draft.characters,
+          reference_asset_ids: [],
+          image_prompt: draft.image_prompt,
+          video_prompt: draft.video_prompt,
+          status: "draft",
+          notes: [
+            draft.scene ? `场景：${draft.scene}` : "",
+            draft.dialogue ? `对白：${draft.dialogue}` : "",
+            draft.props.length ? `道具：${draft.props.join("、")}` : ""
+          ].filter(Boolean).join("\n")
+        });
+      }
+      setDevelopmentWorkspace((workspace) => ({ ...workspace, shotDrafts: drafts }));
+      await refreshProjectData();
+      setActiveTab("shots");
+    });
+  }
 
   async function handleCreateProject(event) {
     event.preventDefault();
@@ -521,59 +720,142 @@ function App() {
     const content = renderTemplate(template.content, values);
     if (target === "image") {
       setImagePrompt(content);
-      setActiveTab("generate");
+      setActiveTab("image-gen");
     } else {
       setVideoPrompt(content);
-      setActiveTab("generate");
+      setActiveTab("video-gen");
     }
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">F</div>
+    <div className="console-shell">
+      <aside className="console-sidebar">
+        <div className="brand brand-console">
+          <div className="brand-mark brand-mark-console">F</div>
           <div>
             <h1>FrameAI</h1>
-            <p>AI 视频制作工作流中台</p>
+            <p>Production Console</p>
           </div>
         </div>
-        <nav className="nav-list" aria-label="主导航">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={activeTab === item.id ? "active" : ""}
-              onClick={() => setActiveTab(item.id)}
-            >
-              {item.label}
-            </button>
+
+        <nav className="nav-list nav-console" aria-label="主导航">
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group}>
+              <div className="sidebar-section-label">{group}</div>
+              {NAV_ITEMS.filter((item) => item.group === group).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activeTab === item.id ? "active nav-item-console" : "nav-item-console"}
+                  onClick={() => setActiveTab(item.id)}
+                >
+                  <span>{item.label}</span>
+                  {item.hint ? <small>{item.hint}</small> : null}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
+
+        <div className="sidebar-footer-card">
+          <span className="sidebar-footer-label">Provider</span>
+          <strong>{providers.length || 0} 已加载</strong>
+          <p>{runtime?.storage_dir ? "本地工作流已连接" : "等待运行环境"}</p>
+          <button type="button" onClick={() => setActiveTab("settings")}>查看设置</button>
+        </div>
       </aside>
 
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">当前项目</span>
-            <h2>{selectedProject?.name || "未创建项目"}</h2>
+      <main className="console-main">
+        <header className="console-topbar">
+          <div className="topbar-search">
+            <input
+              value=""
+              readOnly
+              aria-label="搜索占位"
+              placeholder="搜索项目、分镜、素材、任务..."
+            />
+            <span>CMD+K</span>
           </div>
-          <select
-            value={currentProjectId}
-            onChange={(event) => setSelectedProjectId(event.target.value)}
-            aria-label="选择项目"
-          >
-            {projects.length === 0 ? <option value="">暂无项目</option> : null}
-            {projects.map((project) => (
-              <option value={project.id} key={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+
+          <div className="topbar-actions">
+            <div className="topbar-project">
+              <span className="eyebrow">当前项目</span>
+              <h2>{selectedProject?.name || "未创建项目"}</h2>
+            </div>
+            <select
+              className="project-switcher"
+              value={currentProjectId}
+              onChange={(event) => setSelectedProjectId(event.target.value)}
+              aria-label="选择项目"
+            >
+              {projects.length === 0 ? <option value="">暂无项目</option> : null}
+              {projects.map((project) => (
+                <option value={project.id} key={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            <button className="ghost" type="button" onClick={() => setActiveTab("tasks")}>
+              任务队列
+            </button>
+            <button className="primary" type="button" onClick={() => setActiveTab("image-gen")}>
+              快速生成
+            </button>
+          </div>
         </header>
 
+        <section className="console-content">
         {error ? <div className="notice error">{error}</div> : null}
         {isLoading ? <div className="notice">正在连接本地后端...</div> : null}
+
+        {activeTab === "overview" && (
+          <OverviewPage
+            project={selectedProject}
+            projects={projects}
+            shots={projectShots}
+            assets={projectAssets}
+            tasks={projectTasks}
+            logs={projectLogs}
+            runningTasks={runningTasks}
+            selectedAssetsCount={selectedAssetsCount}
+            onOpenProjects={() => setActiveTab("projects")}
+            onOpenShots={() => setActiveTab("shots")}
+            onOpenGenerate={() => setActiveTab("image-gen")}
+            onOpenTasks={() => setActiveTab("tasks")}
+          />
+        )}
+
+        {activeTab === "project-detail" && (
+          <ProjectDetailPage
+            project={selectedProject}
+            shots={projectShots}
+            assets={projectAssets}
+            tasks={projectTasks}
+            logs={projectLogs}
+            onNavigate={setActiveTab}
+          />
+        )}
+
+        {activeTab === "development" && (
+          <DevelopmentPage
+            workspace={developmentWorkspace}
+            view={developmentView}
+            project={selectedProject}
+            onViewChange={setDevelopmentView}
+            onFieldChange={updateDevelopmentField}
+            onListItemChange={updateDevelopmentListItem}
+            onAddListItem={addDevelopmentListItem}
+            onRemoveListItem={removeDevelopmentListItem}
+            onChecklistChange={(key, checked) => {
+              setDevelopmentWorkspace((workspace) => ({
+                ...workspace,
+                checklist: { ...workspace.checklist, [key]: checked }
+              }));
+            }}
+            onBuildShotDrafts={handleBuildShotDrafts}
+            onImportShotDrafts={handleImportShotDrafts}
+          />
+        )}
 
         {activeTab === "projects" && (
           <section className="page-grid">
@@ -622,23 +904,49 @@ function App() {
             <Panel title="项目列表">
               <div className="metric-grid">
                 <Metric label="项目" value={projects.length} />
+                <Metric label="进行中" value={projects.filter((project) => project.status === "active").length} />
                 <Metric label="分镜" value={projectShots.length} />
                 <Metric label="素材" value={projectAssets.length} />
                 <Metric label="任务" value={projectTasks.length} />
               </div>
+              <div className="search-filter-bar">
+                <label>
+                  搜索项目
+                  <input
+                    value={projectSearch}
+                    onChange={(event) => setProjectSearch(event.target.value)}
+                    placeholder="项目名称、说明"
+                  />
+                </label>
+                <label>
+                  状态
+                  <select value={projectStatusFilter} onChange={(event) => setProjectStatusFilter(event.target.value)}>
+                    <option value="all">全部状态</option>
+                    <option value="active">进行中</option>
+                    <option value="paused">已暂停</option>
+                    <option value="completed">已完成</option>
+                  </select>
+                </label>
+              </div>
               <div className="list">
-                {projects.map((project) => (
+                {visibleProjects.map((project) => (
                   <article className={`project-item ${project.id === currentProjectId ? "selected" : ""}`} key={project.id}>
                     <button className="row-button" type="button" onClick={() => setSelectedProjectId(project.id)}>
                       <strong>{project.name}</strong>
                       <span>{project.description || "未填写说明"}</span>
+                      <span className={`status ${project.status}`}>{project.status}</span>
                     </button>
                     <div className="project-actions">
+                      <button type="button" onClick={() => {
+                        setSelectedProjectId(project.id);
+                        setActiveTab("project-detail");
+                      }}>详情</button>
                       <button type="button" onClick={() => startEditProject(project)}>编辑</button>
                       <button className="danger" type="button" onClick={() => handleDeleteProject(project)}>删除</button>
                     </div>
                   </article>
                 ))}
+                {!visibleProjects.length ? <div className="empty-state">没有匹配的项目。</div> : null}
               </div>
             </Panel>
           </section>
@@ -729,13 +1037,28 @@ function App() {
                 ) : null}
               </RequireProject>
             </Panel>
-            <Panel title="分镜列表">
+            <Panel title="分镜工作台" subtitle="左侧维护分镜，右侧聚焦当前镜头、提示词和生成结果。">
+              <RequireProject project={selectedProject}>
+                <ShotFocus
+                  shot={selectedShot}
+                  assets={projectAssets}
+                  panel={shotPanel}
+                  onPanelChange={setShotPanel}
+                  onCreateImage={() => selectedShot ? handleCreateShotTask(selectedShot, "image") : undefined}
+                  onCreateVideo={() => selectedShot ? handleCreateShotTask(selectedShot, "video") : undefined}
+                  onSetStatus={(status) => selectedShot ? handleSetShotStatus(selectedShot, status) : undefined}
+                  onSelectImage={(asset) => selectedShot ? handleSelectShotAsset(selectedShot, asset, "image") : undefined}
+                  onSelectVideo={(asset) => selectedShot ? handleSelectShotAsset(selectedShot, asset, "video") : undefined}
+                />
+              </RequireProject>
               <div className="shot-list">
                 {projectShots.map((shot) => (
                   <ShotCard
                     key={shot.id}
                     shot={shot}
                     assets={projectAssets}
+                    isSelected={shot.id === selectedShot?.id}
+                    onOpen={() => setSelectedShotId(shot.id)}
                     onEdit={startEditShot}
                     onCreateImage={() => handleCreateShotTask(shot, "image")}
                     onCreateVideo={() => handleCreateShotTask(shot, "video")}
@@ -767,8 +1090,16 @@ function App() {
                 <AssetDetail asset={selectedAsset} assets={projectAssets} tasks={projectTasks} onRerunTask={handleRerunTask} />
               </RequireProject>
             </Panel>
-            <Panel title="素材库">
-              <div className="toolbar">
+            <Panel title="素材库" subtitle="按类型、评审状态和关键词筛选素材，可切换网格或列表视图。">
+              <div className="toolbar asset-toolbar">
+                <label>
+                  搜索素材
+                  <input
+                    value={assetSearch}
+                    onChange={(event) => setAssetSearch(event.target.value)}
+                    placeholder="素材名称、提示词、模型"
+                  />
+                </label>
                 <label>
                   素材类型
                   <select value={assetTypeFilter} onChange={(event) => setAssetTypeFilter(event.target.value)}>
@@ -780,9 +1111,36 @@ function App() {
                     <option value="other">其他</option>
                   </select>
                 </label>
+                <label>
+                  评审状态
+                  <select value={assetReviewFilter} onChange={(event) => setAssetReviewFilter(event.target.value)}>
+                    <option value="all">全部评审</option>
+                    <option value="unreviewed">未评审</option>
+                    <option value="liked">喜欢</option>
+                    <option value="disliked">不喜欢</option>
+                    <option value="discarded">废弃</option>
+                  </select>
+                </label>
+                <div className="segmented-control" aria-label="素材视图">
+                  <button
+                    className={assetView === "grid" ? "active" : ""}
+                    type="button"
+                    onClick={() => setAssetView("grid")}
+                  >
+                    网格
+                  </button>
+                  <button
+                    className={assetView === "list" ? "active" : ""}
+                    type="button"
+                    onClick={() => setAssetView("list")}
+                  >
+                    列表
+                  </button>
+                </div>
               </div>
               <AssetGrid
                 assets={visibleAssets}
+                view={assetView}
                 selectedAssetId={selectedAssetId}
                 onOpen={(asset) => setSelectedAssetId(asset.id)}
                 onSelect={(asset) => runAction(async () => {
@@ -881,9 +1239,28 @@ function App() {
                 </form>
               ) : null}
             </Panel>
-            <Panel title="模板库">
+            <Panel title="模板库" subtitle="原型里的模板分类和变量填写保留在这里，可直接套到生图或生视频中心。">
+              <div className="segmented-control template-filter" aria-label="模板分类">
+                {[
+                  ["all", "全部"],
+                  ["image", "生图"],
+                  ["video", "视频"],
+                  ["character", "角色"],
+                  ["scene", "场景"],
+                  ["general", "通用"]
+                ].map(([value, label]) => (
+                  <button
+                    className={templateCategoryFilter === value ? "active" : ""}
+                    type="button"
+                    key={value}
+                    onClick={() => setTemplateCategoryFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="template-list">
-                {templates.map((template) => (
+                {filteredTemplates.map((template) => (
                   <article className="template-item" key={template.id}>
                     <div className="item-heading">
                       <strong>{template.name}</strong>
@@ -924,14 +1301,15 @@ function App() {
                     ) : null}
                   </article>
                 ))}
+                {!filteredTemplates.length ? <div className="empty-state">这个分类下还没有模板。</div> : null}
               </div>
             </Panel>
           </section>
         )}
 
-        {activeTab === "generate" && (
-          <section className="page-grid">
-            <Panel title="生图任务">
+        {activeTab === "image-gen" && (
+          <section className="generation-layout">
+            <Panel title="生图中心" subtitle="选择模型、画幅、参考图和高级参数，生成结果会自动进入当前项目素材库。">
               <RequireProject project={selectedProject}>
                 <div className="stack">
                   <label>
@@ -947,6 +1325,15 @@ function App() {
                   <label>
                     提示词
                     <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} rows={8} />
+                  </label>
+                  <label>
+                    参考图
+                    <select value={referenceAssetId} onChange={(event) => setReferenceAssetId(event.target.value)}>
+                      <option value="">不使用参考图</option>
+                      {imageAssets.map((asset) => (
+                        <option value={asset.id} key={asset.id}>{asset.name}</option>
+                      ))}
+                    </select>
                   </label>
                   <div className="field-grid">
                     <label>
@@ -975,11 +1362,41 @@ function App() {
                       <input type="number" min="0" max="5" value={imageParams.max_retries} onChange={(event) => setImageParams({ ...imageParams, max_retries: event.target.value })} />
                     </label>
                   </div>
+                  <button className="inline-disclosure" type="button" onClick={() => setShowImageAdvanced(!showImageAdvanced)}>
+                    {showImageAdvanced ? "收起高级参数" : "展开高级参数"}
+                  </button>
+                  {showImageAdvanced ? (
+                    <div className="field-grid">
+                      <label>
+                        引导强度
+                        <input type="number" min="1" max="20" value={imageParams.guidance} onChange={(event) => setImageParams({ ...imageParams, guidance: event.target.value })} />
+                      </label>
+                      <label>
+                        负向提示词
+                        <input value={imageParams.negative_prompt} onChange={(event) => setImageParams({ ...imageParams, negative_prompt: event.target.value })} placeholder="blurry, low quality" />
+                      </label>
+                    </div>
+                  ) : null}
                   <button className="primary" type="button" disabled={!imagePrompt} onClick={() => handleCreateTask("image")}>创建生图任务</button>
                 </div>
               </RequireProject>
             </Panel>
-            <Panel title="生视频任务">
+            <Panel title="图片结果与模板">
+              <GenerationSidePanel
+                type="image"
+                assets={projectAssets}
+                tasks={projectTasks}
+                templates={templates}
+                onUseTemplate={(template) => applyTemplate(template, "image")}
+                onOpenTasks={() => setActiveTab("tasks")}
+              />
+            </Panel>
+          </section>
+        )}
+
+        {activeTab === "video-gen" && (
+          <section className="generation-layout">
+            <Panel title="生视频中心" subtitle="支持文生视频、图生视频和首尾帧视频，参数会保存进任务记录。">
               <RequireProject project={selectedProject}>
                 <div className="stack">
                   <label>
@@ -1046,9 +1463,46 @@ function App() {
                       <input type="number" min="0" max="5" value={videoParams.max_retries} onChange={(event) => setVideoParams({ ...videoParams, max_retries: event.target.value })} />
                     </label>
                   </div>
+                  <button className="inline-disclosure" type="button" onClick={() => setShowVideoAdvanced(!showVideoAdvanced)}>
+                    {showVideoAdvanced ? "收起高级参数" : "展开高级参数"}
+                  </button>
+                  {showVideoAdvanced ? (
+                    <div className="field-grid">
+                      <label>
+                        随机种子
+                        <input value={videoParams.seed} onChange={(event) => setVideoParams({ ...videoParams, seed: event.target.value })} placeholder="可留空" />
+                      </label>
+                      <label>
+                        生成模式
+                        <select
+                          value={endFrameAssetId ? "first_last_frame" : referenceAssetId ? "image_to_video" : "text_to_video"}
+                          onChange={(event) => {
+                            if (event.target.value === "text_to_video") {
+                              setReferenceAssetId("");
+                              setEndFrameAssetId("");
+                            }
+                          }}
+                        >
+                          <option value="text_to_video">文生视频</option>
+                          <option value="image_to_video">图生视频</option>
+                          <option value="first_last_frame">首尾帧视频</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
                   <button className="primary" type="button" disabled={!videoPrompt} onClick={() => handleCreateTask("video")}>创建生视频任务</button>
                 </div>
               </RequireProject>
+            </Panel>
+            <Panel title="视频队列与结果">
+              <GenerationSidePanel
+                type="video"
+                assets={projectAssets}
+                tasks={projectTasks}
+                templates={templates}
+                onUseTemplate={(template) => applyTemplate(template, "video")}
+                onOpenTasks={() => setActiveTab("tasks")}
+              />
             </Panel>
           </section>
         )}
@@ -1103,7 +1557,7 @@ function App() {
 
         {activeTab === "settings" && (
           <section className="page-grid">
-            <Panel title="Provider">
+            <Panel title="Provider" subtitle="集中查看图片、视频供应商配置状态。">
               <div className="template-list">
                 {providers.map((provider) => (
                   <article className="template-item" key={provider.id}>
@@ -1116,18 +1570,41 @@ function App() {
                     <p>生视频模型：{provider.video_model}</p>
                   </article>
                 ))}
+                {!providers.length ? <div className="empty-state">还没有加载到 Provider。</div> : null}
               </div>
             </Panel>
-            <Panel title="本地运行路径">
-              <dl className="runtime-list">
-                <dt>数据库</dt>
-                <dd>{runtime?.database_path}</dd>
-                <dt>文件存储</dt>
-                <dd>{runtime?.storage_dir}</dd>
-              </dl>
+            <Panel title="默认设置与运行路径">
+              <div className="stack">
+                <dl className="runtime-list">
+                  <dt>数据库</dt>
+                  <dd>{runtime?.database_path}</dd>
+                  <dt>文件存储</dt>
+                  <dd>{runtime?.storage_dir}</dd>
+                </dl>
+                <div className="field-grid">
+                  <label>
+                    默认图片比例
+                    <input value={imageParams.aspect_ratio} readOnly />
+                  </label>
+                  <label>
+                    默认视频时长
+                    <input value={`${videoParams.duration}s`} readOnly />
+                  </label>
+                  <label>
+                    图片重试
+                    <input value={imageParams.max_retries} readOnly />
+                  </label>
+                  <label>
+                    视频重试
+                    <input value={videoParams.max_retries} readOnly />
+                  </label>
+                </div>
+                <div className="notice compact-notice">额度与成本控制已接入日志统计视图；真实预算阈值可在后端 Provider 配置完善后启用。</div>
+              </div>
             </Panel>
           </section>
         )}
+        </section>
       </main>
     </div>
   );
@@ -1142,6 +1619,668 @@ function Panel({ title, subtitle, children }) {
       </div>
       {children}
     </section>
+  );
+}
+
+function OverviewPage({
+  project,
+  projects,
+  shots,
+  assets,
+  tasks,
+  logs,
+  runningTasks,
+  selectedAssetsCount,
+  onOpenProjects,
+  onOpenShots,
+  onOpenGenerate,
+  onOpenTasks
+}) {
+  const latestProjects = projects.slice(0, 3);
+  const latestTasks = tasks.slice(0, 4);
+  const latestLogs = logs.slice(0, 4);
+  const successCount = tasks.filter((task) => task.status === "succeeded").length;
+  const failedCount = tasks.filter((task) => task.status === "failed").length;
+
+  return (
+    <section className="overview-stack">
+      <section className="hero-panel">
+        <div className="hero-copy">
+          <span className="eyebrow">FrameAI Overview</span>
+          <h2>{project?.name || "欢迎进入 FrameAI"}</h2>
+          <p>
+            这是你的 AI 视频生产控制台。用一个首页总览项目、分镜、素材和任务状态，
+            然后通过工作台继续推进生图、生视频和结果筛选。
+          </p>
+        </div>
+        <div className="hero-actions">
+          <button className="primary" type="button" onClick={onOpenProjects}>新建或切换项目</button>
+          <button className="ghost" type="button" onClick={onOpenGenerate}>进入生成中心</button>
+        </div>
+      </section>
+
+      <section className="metric-strip">
+        <Metric label="项目总数" value={projects.length} />
+        <Metric label="当前分镜" value={shots.length} />
+        <Metric label="素材规模" value={assets.length} />
+        <Metric label="运行中任务" value={runningTasks.length} />
+        <Metric label="已入选素材" value={selectedAssetsCount} />
+        <Metric label="成功任务" value={successCount} />
+      </section>
+
+      <section className="workflow-strip" aria-label="制作流程">
+        {[
+          ["项目", projects.length],
+          ["分镜", shots.length],
+          ["提示词", "模板"],
+          ["生图", tasks.filter((task) => task.task_type === "image").length],
+          ["生视频", tasks.filter((task) => task.task_type === "video").length],
+          ["评审入库", selectedAssetsCount]
+        ].map(([label, value]) => (
+          <div className="workflow-step" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </section>
+
+      <section className="overview-grid">
+        <Panel title="当前项目" subtitle="把今天要推进的内容先聚焦在一个项目上。">
+          <div className="overview-card-block">
+            <div className="overview-project-head">
+              <div>
+                <strong>{project?.name || "暂无项目"}</strong>
+                <p>{project?.description || "创建一个项目后，分镜、素材、任务都会挂在这里。"}</p>
+              </div>
+              <span className="status running">{project ? "active" : "idle"}</span>
+            </div>
+            <div className="quick-action-grid">
+              <button type="button" onClick={onOpenShots}>进入分镜工作台</button>
+              <button type="button" onClick={onOpenGenerate}>创建生成任务</button>
+              <button type="button" onClick={onOpenTasks}>查看任务队列</button>
+              <button type="button" onClick={onOpenProjects}>管理项目</button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="活跃队列" subtitle="优先关注正在运行和待处理的任务。">
+          <div className="overview-list">
+            {runningTasks.length ? (
+              runningTasks.slice(0, 4).map((task) => (
+                <article className="overview-list-item" key={task.id}>
+                  <div>
+                    <strong>{task.task_type === "image" ? "生图" : "生视频"} · {task.model}</strong>
+                    <p>{task.prompt}</p>
+                  </div>
+                  <span className={`status ${task.status}`}>{task.status}</span>
+                </article>
+              ))
+            ) : (
+              <div className="empty-state">当前没有运行中的任务，可以从生成中心发起新的任务。</div>
+            )}
+          </div>
+        </Panel>
+      </section>
+
+      <section className="overview-grid">
+        <Panel title="最近项目" subtitle="快速回到最近在推进的工作。">
+          <div className="project-overview-grid">
+            {latestProjects.length ? latestProjects.map((item) => (
+              <article className="project-overview-card" key={item.id}>
+                <div className="project-overview-meta">
+                  <span className="tag">Project</span>
+                  <strong>{item.name}</strong>
+                </div>
+                <p>{item.description || "未填写项目说明"}</p>
+              </article>
+            )) : <div className="empty-state">还没有项目，先创建一个试试。</div>}
+          </div>
+        </Panel>
+
+        <Panel title="最近任务与日志" subtitle="从结果和日志快速判断今天的系统状态。">
+          <div className="overview-feed">
+            {latestTasks.length ? latestTasks.map((task) => (
+              <article className="overview-feed-item" key={task.id}>
+                <span className={`status ${task.status}`}>{task.status}</span>
+                <div>
+                  <strong>{task.task_type === "image" ? "生图任务" : "生视频任务"}</strong>
+                  <p>{task.model}</p>
+                </div>
+              </article>
+            )) : null}
+            {latestLogs.length ? latestLogs.map((log) => (
+              <article className="overview-feed-item" key={log.id}>
+                <span className={`status ${log.status}`}>{log.status}</span>
+                <div>
+                  <strong>{log.model || "调用日志"}</strong>
+                  <p>{log.endpoint}</p>
+                </div>
+              </article>
+            )) : null}
+            {!latestTasks.length && !latestLogs.length ? (
+              <div className="empty-state">还没有任务和日志记录。</div>
+            ) : null}
+            {failedCount ? <div className="notice error compact-notice">当前有 {failedCount} 个失败任务，建议进入任务页查看原因。</div> : null}
+          </div>
+        </Panel>
+      </section>
+    </section>
+  );
+}
+
+function ProjectDetailPage({ project, shots, assets, tasks, logs, onNavigate }) {
+  if (!project) {
+    return <div className="empty-state">请先创建一个项目。</div>;
+  }
+
+  const approvedShots = shots.filter((shot) => ["approved", "image_selected"].includes(shot.status)).length;
+  const progress = shots.length ? Math.round((approvedShots / shots.length) * 100) : 0;
+  const imageTasks = tasks.filter((task) => task.task_type === "image").length;
+  const videoTasks = tasks.filter((task) => task.task_type === "video").length;
+  const failedTasks = tasks.filter((task) => task.status === "failed").length;
+  const recentAssets = assets.slice(0, 5);
+  const recentLogs = logs.slice(0, 6);
+
+  return (
+    <section className="overview-stack">
+      <section className="project-detail-hero">
+        <div>
+          <span className="eyebrow">Project Detail</span>
+          <h2>{project.name}</h2>
+          <p>{project.description || "未填写项目说明"}</p>
+          <div className="tag-row">
+            <span className={`status ${project.status}`}>{project.status}</span>
+            <span className="tag">更新于 {project.updated_at}</span>
+          </div>
+        </div>
+        <div className="hero-actions">
+          <button className="primary" type="button" onClick={() => onNavigate("shots")}>进入分镜工作台</button>
+          <button type="button" onClick={() => onNavigate("assets")}>查看素材库</button>
+        </div>
+      </section>
+
+      <section className="metric-strip">
+        <Metric label="分镜" value={shots.length} />
+        <Metric label="已推进" value={approvedShots} />
+        <Metric label="素材" value={assets.length} />
+        <Metric label="任务" value={tasks.length} />
+        <Metric label="生图任务" value={imageTasks} />
+        <Metric label="生视频任务" value={videoTasks} />
+      </section>
+
+      <section className="panel progress-panel">
+        <div className="item-heading">
+          <div>
+            <strong>分镜完成进度</strong>
+            <p>{approvedShots} / {shots.length} 个镜头已完成图像或通过审核</p>
+          </div>
+          <strong>{progress}%</strong>
+        </div>
+        <div className="progress-bar" aria-label="分镜完成进度">
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        {failedTasks ? <div className="notice error compact-notice">当前有 {failedTasks} 个失败任务需要处理。</div> : null}
+      </section>
+
+      <section className="overview-grid">
+        <Panel title="近期分镜" subtitle="从项目详情可以直接回到具体镜头。">
+          <div className="overview-list">
+            {shots.slice(0, 6).map((shot) => (
+              <article className="overview-list-item" key={shot.id}>
+                <div>
+                  <strong>#{shot.shot_number} {shot.title || "未命名镜头"}</strong>
+                  <p>{shot.story || "未填写剧情"}</p>
+                </div>
+                <span className={`status ${shot.status}`}>{shot.status}</span>
+              </article>
+            ))}
+            {!shots.length ? <div className="empty-state">还没有分镜。</div> : null}
+          </div>
+        </Panel>
+
+        <Panel title="近期素材" subtitle="展示最近生成或上传的素材。">
+          <div className="overview-list">
+            {recentAssets.map((asset) => (
+              <article className="overview-list-item" key={asset.id}>
+                <div>
+                  <strong>{asset.name}</strong>
+                  <p>{asset.asset_type} · {asset.source} · {asset.model || "未记录模型"}</p>
+                </div>
+                <span className={`status ${asset.review_status}`}>{reviewLabel(asset.review_status)}</span>
+              </article>
+            ))}
+            {!recentAssets.length ? <div className="empty-state">还没有素材。</div> : null}
+          </div>
+        </Panel>
+      </section>
+
+      <Panel title="操作记录" subtitle="最近调用日志和任务状态。">
+        <div className="log-list">
+          {recentLogs.map((log) => (
+            <article className="log-item" key={log.id}>
+              <span className={`status ${log.status}`}>{log.status}</span>
+              <strong>{log.model || "调用日志"}</strong>
+              <span>{log.duration_ms}ms</span>
+              <p>{log.endpoint}</p>
+            </article>
+          ))}
+          {!recentLogs.length ? <div className="empty-state">暂无操作记录。</div> : null}
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function DevelopmentPage({
+  workspace,
+  view,
+  project,
+  onViewChange,
+  onFieldChange,
+  onListItemChange,
+  onAddListItem,
+  onRemoveListItem,
+  onChecklistChange,
+  onBuildShotDrafts,
+  onImportShotDrafts
+}) {
+  const doneCount = DEVELOPMENT_CHECKLIST.filter(([key]) => workspace.checklist[key]).length;
+  const phaseCards = [
+    ["01", "故事策划", "选题、受众、世界观和人物圣经"],
+    ["02", "视觉圣经", "风格、角色、场景、道具和提示词公式"],
+    ["03", "剧本拆镜", "单集脚本拆成镜头、对白、动作和情绪"],
+    ["04", "生产质检", "批量出图、筛图、一致性、修复和排版"],
+    ["05", "发布复盘", "平台适配、数据追踪和 SOP 迭代"]
+  ];
+
+  return (
+    <section className="development-page">
+      <section className="project-detail-hero development-hero">
+        <div>
+          <span className="eyebrow">AI Manga SOP</span>
+          <h2>剧本开发台</h2>
+          <p>
+            把 SOP 里的前置创作环节收进平台：先写故事和人物，再沉淀视觉圣经，
+            最后把单集脚本拆成可执行分镜。
+          </p>
+          <div className="tag-row">
+            <span className="tag">当前项目：{project?.name || "未选择"}</span>
+            <span className="tag">清单 {doneCount}/{DEVELOPMENT_CHECKLIST.length}</span>
+          </div>
+        </div>
+        <div className="hero-actions">
+          <button className="primary" type="button" onClick={onBuildShotDrafts}>拆成镜头草稿</button>
+          <button type="button" onClick={onImportShotDrafts}>导入分镜工作台</button>
+        </div>
+      </section>
+
+      <section className="workflow-strip development-flow" aria-label="AI漫剧制作阶段">
+        {phaseCards.map(([num, title, desc]) => (
+          <div className="workflow-step" key={num}>
+            <span>PHASE {num}</span>
+            <strong>{title}</strong>
+            <p>{desc}</p>
+          </div>
+        ))}
+      </section>
+
+      <div className="segmented-control development-tabs" aria-label="剧本开发视图">
+        {[
+          ["script", "故事与剧本"],
+          ["bible", "人物圣经"],
+          ["assets", "场景道具"],
+          ["shots", "拆镜草稿"],
+          ["checklist", "SOP清单"]
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            key={value}
+            className={view === value ? "active" : ""}
+            onClick={() => onViewChange(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "script" && (
+        <section className="page-grid wide-left">
+          <Panel title="故事定位" subtitle="对应 SOP 的选题定位、世界观和剧本结构设计。">
+            <div className="stack">
+              <label>
+                一句话卖点
+                <input value={workspace.logline} onChange={(event) => onFieldChange("logline", event.target.value)} placeholder="一句话说清楚主角、冲突和看点" />
+              </label>
+              <div className="field-grid">
+                <label>
+                  类型题材
+                  <input value={workspace.genre} onChange={(event) => onFieldChange("genre", event.target.value)} placeholder="赛博朋克 / 古风 / 都市..." />
+                </label>
+                <label>
+                  目标平台
+                  <input value={workspace.targetPlatform} onChange={(event) => onFieldChange("targetPlatform", event.target.value)} />
+                </label>
+              </div>
+              <label>
+                目标受众
+                <input value={workspace.audience} onChange={(event) => onFieldChange("audience", event.target.value)} placeholder="年龄、口味、爽点、消费习惯" />
+              </label>
+              <label>
+                世界观设定
+                <textarea value={workspace.worldview} onChange={(event) => onFieldChange("worldview", event.target.value)} rows={6} placeholder="时代、规则、势力、主要矛盾" />
+              </label>
+              <label>
+                视觉风格关键词
+                <textarea value={workspace.visualStyle} onChange={(event) => onFieldChange("visualStyle", event.target.value)} rows={4} placeholder="色调、线条、渲染方式、参考风格" />
+              </label>
+            </div>
+          </Panel>
+
+          <Panel title="单集剧本" subtitle="按场景、对白、动作和情绪写，后续可以自动拆成镜头草稿。">
+            <div className="stack">
+              <label>
+                集数标题
+                <input value={workspace.episodeTitle} onChange={(event) => onFieldChange("episodeTitle", event.target.value)} />
+              </label>
+              <label>
+                剧本脚本
+                <textarea value={workspace.episodeScript} onChange={(event) => onFieldChange("episodeScript", event.target.value)} rows={15} />
+              </label>
+              <div className="button-row">
+                <button className="primary" type="button" onClick={onBuildShotDrafts}>拆成镜头草稿</button>
+                <button type="button" onClick={onImportShotDrafts}>导入分镜</button>
+              </div>
+            </div>
+          </Panel>
+        </section>
+      )}
+
+      {view === "bible" && (
+        <Panel title="人物圣经" subtitle="锁定角色语言风格和视觉关键词，减少后续剧本与出图漂移。">
+          <div className="development-card-grid">
+            {workspace.characters.map((character, index) => (
+              <article className="development-edit-card" key={`${character.name}-${index}`}>
+                <div className="item-heading">
+                  <strong>人物 {index + 1}</strong>
+                  <button className="danger" type="button" onClick={() => onRemoveListItem("characters", index)}>删除</button>
+                </div>
+                <label>
+                  名称
+                  <input value={character.name} onChange={(event) => onListItemChange("characters", index, "name", event.target.value)} />
+                </label>
+                <label>
+                  角色定位
+                  <input value={character.role} onChange={(event) => onListItemChange("characters", index, "role", event.target.value)} />
+                </label>
+                <label>
+                  语言风格
+                  <textarea value={character.voice} onChange={(event) => onListItemChange("characters", index, "voice", event.target.value)} rows={3} />
+                </label>
+                <label>
+                  视觉关键词
+                  <textarea value={character.visual} onChange={(event) => onListItemChange("characters", index, "visual", event.target.value)} rows={3} />
+                </label>
+              </article>
+            ))}
+          </div>
+          <button type="button" onClick={() => onAddListItem("characters", { name: "新人物", role: "", voice: "", visual: "" })}>新增人物</button>
+        </Panel>
+      )}
+
+      {view === "assets" && (
+        <section className="overview-grid">
+          <Panel title="场景库" subtitle="对应 SOP 的场景资产库，按地点、时间和情绪沉淀。">
+            <EditableDevelopmentList
+              type="scenes"
+              items={workspace.scenes}
+              fields={[
+                ["name", "场景名称"],
+                ["time", "时间"],
+                ["mood", "情绪"],
+                ["visual", "视觉描述"]
+              ]}
+              onChange={onListItemChange}
+              onAdd={() => onAddListItem("scenes", { name: "新场景", time: "", mood: "", visual: "" })}
+              onRemove={onRemoveListItem}
+            />
+          </Panel>
+          <Panel title="道具库" subtitle="关键道具会进入分镜备注和提示词，帮助镜头连续。">
+            <EditableDevelopmentList
+              type="props"
+              items={workspace.props}
+              fields={[
+                ["name", "道具名称"],
+                ["type", "类型"],
+                ["visual", "视觉描述"],
+                ["usage", "剧情用途"]
+              ]}
+              onChange={onListItemChange}
+              onAdd={() => onAddListItem("props", { name: "新道具", type: "", visual: "", usage: "" })}
+              onRemove={onRemoveListItem}
+            />
+          </Panel>
+        </section>
+      )}
+
+      {view === "shots" && (
+        <Panel title="拆镜草稿" subtitle="由单集脚本按场景、对白、动作初步拆出，可导入真实分镜继续出图。">
+          <div className="button-row">
+            <button className="primary" type="button" onClick={onBuildShotDrafts}>重新拆镜</button>
+            <button type="button" onClick={onImportShotDrafts}>导入分镜工作台</button>
+          </div>
+          <div className="development-shot-grid">
+            {workspace.shotDrafts.map((draft) => (
+              <article className="shot-item shot-card" key={draft.id}>
+                <div className="shot-number">#{draft.number}</div>
+                <div className="shot-content">
+                  <div className="item-heading">
+                    <h3>{draft.title}</h3>
+                    <span className="tag">{draft.camera}</span>
+                  </div>
+                  <p>{draft.story}</p>
+                  <div className="tag-row">
+                    {draft.scene ? <span className="tag">{draft.scene}</span> : null}
+                    {draft.characters.map((name) => <span className="tag" key={name}>{name}</span>)}
+                    {draft.props.map((name) => <span className="tag" key={name}>道具：{name}</span>)}
+                  </div>
+                  <div className="detail-block">
+                    <strong>生图提示词</strong>
+                    <p>{draft.image_prompt}</p>
+                  </div>
+                  <div className="detail-block">
+                    <strong>视频提示词</strong>
+                    <p>{draft.video_prompt}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!workspace.shotDrafts.length ? <div className="empty-state">还没有镜头草稿，先从单集剧本拆镜。</div> : null}
+          </div>
+        </Panel>
+      )}
+
+      {view === "checklist" && (
+        <Panel title="SOP 清单" subtitle="把 SOP 中第一个项目前的关键准备变成可勾选状态。">
+          <div className="development-checklist">
+            {DEVELOPMENT_CHECKLIST.map(([key, label]) => (
+              <label className="checkline" key={key}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(workspace.checklist[key])}
+                  onChange={(event) => onChecklistChange(key, event.target.checked)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </section>
+  );
+}
+
+function EditableDevelopmentList({ type, items, fields, onChange, onAdd, onRemove }) {
+  return (
+    <div className="stack">
+      {items.map((item, index) => (
+        <article className="development-edit-card" key={`${type}-${index}`}>
+          <div className="item-heading">
+            <strong>{item.name || `条目 ${index + 1}`}</strong>
+            <button className="danger" type="button" onClick={() => onRemove(type, index)}>删除</button>
+          </div>
+          {fields.map(([field, label]) => (
+            <label key={field}>
+              {label}
+              {field === "visual" || field === "usage" ? (
+                <textarea value={item[field]} onChange={(event) => onChange(type, index, field, event.target.value)} rows={3} />
+              ) : (
+                <input value={item[field]} onChange={(event) => onChange(type, index, field, event.target.value)} />
+              )}
+            </label>
+          ))}
+        </article>
+      ))}
+      <button type="button" onClick={onAdd}>新增</button>
+    </div>
+  );
+}
+
+function ShotFocus({
+  shot,
+  assets,
+  panel,
+  onPanelChange,
+  onCreateImage,
+  onCreateVideo,
+  onSetStatus,
+  onSelectImage,
+  onSelectVideo
+}) {
+  if (!shot) {
+    return <div className="empty-state">创建分镜后，这里会显示当前镜头的提示词和生成结果。</div>;
+  }
+
+  const imageResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "image");
+  const videoResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "video");
+  const referenceAssets = assets.filter((asset) => shot.reference_asset_ids.includes(asset.id));
+
+  return (
+    <section className="shot-focus">
+      <div className="item-heading">
+        <div>
+          <span className="eyebrow">Shot #{shot.shot_number}</span>
+          <h3>{shot.title || "未命名镜头"}</h3>
+        </div>
+        <span className={`status ${shot.status}`}>{shot.status}</span>
+      </div>
+      <div className="segmented-control" aria-label="分镜面板">
+        <button className={panel === "detail" ? "active" : ""} type="button" onClick={() => onPanelChange("detail")}>分镜详情</button>
+        <button className={panel === "generate" ? "active" : ""} type="button" onClick={() => onPanelChange("generate")}>生成结果</button>
+      </div>
+      {panel === "detail" ? (
+        <div className="detail-block">
+          <strong>剧情描述</strong>
+          <p>{shot.story || "未填写剧情"}</p>
+          <div className="field-grid">
+            <div className="detail-card">
+              <strong>角色</strong>
+              <p>{shot.characters.length ? shot.characters.join("、") : "未指定"}</p>
+            </div>
+            <div className="detail-card">
+              <strong>参考素材</strong>
+              <p>{referenceAssets.length ? referenceAssets.map((asset) => asset.name).join("、") : "暂无参考素材"}</p>
+            </div>
+          </div>
+          <div className="detail-block">
+            <strong>生图提示词</strong>
+            <p>{shot.image_prompt || "未填写生图提示词"}</p>
+          </div>
+          <div className="detail-block">
+            <strong>生视频提示词</strong>
+            <p>{shot.video_prompt || "未填写生视频提示词"}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="detail-block">
+          <ShotResultGrid
+            title="生图结果"
+            assets={imageResults}
+            selectedId={shot.selected_image_asset_id}
+            emptyText="还没有分镜生图结果。"
+            onSelect={onSelectImage}
+          />
+          <ShotResultGrid
+            title="生视频结果"
+            assets={videoResults}
+            selectedId={shot.selected_video_asset_id}
+            emptyText="还没有分镜生视频结果。"
+            onSelect={onSelectVideo}
+          />
+        </div>
+      )}
+      <div className="button-row">
+        <button type="button" onClick={onCreateImage}>一键生图</button>
+        <button type="button" onClick={onCreateVideo}>入选图生视频</button>
+        <button type="button" onClick={() => onSetStatus("approved")}>标记通过</button>
+        <button className="danger" type="button" onClick={() => onSetStatus("rejected")}>废弃</button>
+      </div>
+    </section>
+  );
+}
+
+function GenerationSidePanel({ type, assets, tasks, templates, onUseTemplate, onOpenTasks }) {
+  const scopedAssets = assets.filter((asset) => asset.asset_type === type).slice(0, 6);
+  const scopedTasks = tasks.filter((task) => task.task_type === type).slice(0, 5);
+  const scopedTemplates = templates.filter((template) => template.category === type).slice(0, 4);
+
+  return (
+    <div className="generation-side">
+      <div className="metric-grid">
+        <Metric label="结果素材" value={assets.filter((asset) => asset.asset_type === type).length} />
+        <Metric label="任务数" value={tasks.filter((task) => task.task_type === type).length} />
+        <Metric label="模板" value={templates.filter((template) => template.category === type).length} />
+      </div>
+      <div className="detail-block">
+        <strong>最近任务</strong>
+        <div className="overview-list">
+          {scopedTasks.map((task) => (
+            <article className="overview-list-item" key={task.id}>
+              <div>
+                <strong>{task.model}</strong>
+                <p>{task.prompt}</p>
+              </div>
+              <span className={`status ${task.status}`}>{task.status}</span>
+            </article>
+          ))}
+          {!scopedTasks.length ? <div className="empty-state">还没有相关任务。</div> : null}
+        </div>
+      </div>
+      <div className="detail-block">
+        <strong>最近结果</strong>
+        <div className="result-grid">
+          {scopedAssets.map((asset) => (
+            <div className="result-tile" key={asset.id}>
+              {asset.mime_type.startsWith("image/") ? (
+                <img src={fileUrl(asset.url)} alt={asset.name} />
+              ) : (
+                <span>{asset.name}</span>
+              )}
+            </div>
+          ))}
+        </div>
+        {!scopedAssets.length ? <p>暂无结果素材。</p> : null}
+      </div>
+      <div className="detail-block">
+        <strong>可用模板</strong>
+        <div className="template-chip-list">
+          {scopedTemplates.map((template) => (
+            <button type="button" key={template.id} onClick={() => onUseTemplate(template)}>{template.name}</button>
+          ))}
+          {!scopedTemplates.length ? <p>暂无模板。</p> : null}
+        </div>
+      </div>
+      <button type="button" onClick={onOpenTasks}>查看完整任务记录</button>
+    </div>
   );
 }
 
@@ -1196,6 +2335,8 @@ function ReferenceAssetPicker({ assets, selectedIds, onChange }) {
 function ShotCard({
   shot,
   assets,
+  isSelected,
+  onOpen,
   onEdit,
   onCreateImage,
   onCreateVideo,
@@ -1208,7 +2349,7 @@ function ShotCard({
   const videoResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "video");
 
   return (
-    <article className={`shot-item shot-card ${shot.status}`}>
+    <article className={`shot-item shot-card ${shot.status} ${isSelected ? "selected" : ""}`}>
       <div className="shot-number">#{shot.shot_number}</div>
       <div className="shot-content">
         <div className="item-heading">
@@ -1222,6 +2363,7 @@ function ShotCard({
         </div>
 
         <div className="button-row">
+          <button type="button" onClick={onOpen}>聚焦详情</button>
           <button type="button" onClick={() => onEdit(shot)}>编辑</button>
           <button type="button" onClick={onCreateImage}>一键生图</button>
           <button type="button" disabled={!shot.selected_image_asset_id && !shot.reference_asset_ids.length} onClick={onCreateVideo}>入选图生视频</button>
@@ -1281,13 +2423,13 @@ function ShotResultGrid({ title, assets, selectedId, emptyText, onSelect }) {
   );
 }
 
-function AssetGrid({ assets, selectedAssetId, onOpen, onSelect, onReview }) {
+function AssetGrid({ assets, view, selectedAssetId, onOpen, onSelect, onReview }) {
   if (!assets.length) {
     return <div className="empty-state">暂无素材。上传参考图后会显示在这里。</div>;
   }
 
   return (
-    <div className="asset-grid">
+    <div className={`asset-grid ${view === "list" ? "list-view" : ""}`}>
       {assets.map((asset) => (
         <article className={`asset-item ${asset.id === selectedAssetId ? "selected" : ""}`} key={asset.id}>
           <div className="asset-preview">
@@ -1507,6 +2649,117 @@ function LogDashboard({ tasks, logs }) {
   );
 }
 
+function loadDevelopmentWorkspace() {
+  if (typeof window === "undefined") return DEFAULT_DEVELOPMENT_WORKSPACE;
+  try {
+    const saved = window.localStorage.getItem("frameai.developmentWorkspace");
+    if (!saved) return DEFAULT_DEVELOPMENT_WORKSPACE;
+    return mergeDevelopmentWorkspace(JSON.parse(saved));
+  } catch {
+    return DEFAULT_DEVELOPMENT_WORKSPACE;
+  }
+}
+
+function saveDevelopmentWorkspace(workspace) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("frameai.developmentWorkspace", JSON.stringify(workspace));
+}
+
+function mergeDevelopmentWorkspace(saved) {
+  return {
+    ...DEFAULT_DEVELOPMENT_WORKSPACE,
+    ...saved,
+    characters: Array.isArray(saved.characters) ? saved.characters : DEFAULT_DEVELOPMENT_WORKSPACE.characters,
+    props: Array.isArray(saved.props) ? saved.props : DEFAULT_DEVELOPMENT_WORKSPACE.props,
+    scenes: Array.isArray(saved.scenes) ? saved.scenes : DEFAULT_DEVELOPMENT_WORKSPACE.scenes,
+    shotDrafts: Array.isArray(saved.shotDrafts) ? saved.shotDrafts : [],
+    checklist: {
+      ...DEFAULT_DEVELOPMENT_WORKSPACE.checklist,
+      ...(saved.checklist || {})
+    }
+  };
+}
+
+function buildShotDraftsFromScript(workspace) {
+  const rawScript = workspace.episodeScript || "";
+  if (!rawScript.trim()) return [];
+
+  let blocks = rawScript
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blocks.length <= 1) {
+    const lines = rawScript.split(/\n/).map((line) => line.trim()).filter(Boolean);
+    blocks = [];
+    for (let index = 0; index < lines.length; index += 3) {
+      blocks.push(lines.slice(index, index + 3).join("\n"));
+    }
+  }
+
+  const cameras = ["远景", "中景", "近景", "特写", "跟拍", "俯拍"];
+  return blocks.map((block, index) => {
+    const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+    const scene = findMention(workspace.scenes, block);
+    const props = findMentions(workspace.props, block);
+    const characters = findMentions(workspace.characters, block);
+    const dialogue = lines
+      .filter((line) => /[:：]/.test(line) && !/^场景|^scene/i.test(line))
+      .join(" / ");
+    const story = lines
+      .map((line) => line.replace(/^场景[一二三四五六七八九十\d]*[:：]?/i, "").trim())
+      .join(" ");
+    const camera = cameras[index % cameras.length];
+    const characterVisual = workspace.characters
+      .filter((character) => characters.includes(character.name))
+      .map((character) => character.visual)
+      .filter(Boolean)
+      .join("；");
+    const sceneVisual = scene?.visual || "";
+    const propVisual = workspace.props
+      .filter((prop) => props.includes(prop.name))
+      .map((prop) => prop.visual)
+      .filter(Boolean)
+      .join("；");
+
+    return {
+      id: `draft-${index + 1}`,
+      number: index + 1,
+      title: `${workspace.episodeTitle || "EP"} · 镜头 ${index + 1}`,
+      story,
+      scene: scene?.name || "",
+      props,
+      characters,
+      dialogue,
+      camera,
+      image_prompt: [
+        workspace.visualStyle,
+        `${camera}构图`,
+        sceneVisual,
+        characterVisual,
+        propVisual,
+        story
+      ].filter(Boolean).join("，"),
+      video_prompt: [
+        `${camera}镜头运动`,
+        dialogue ? `对白节奏：${dialogue}` : "",
+        scene?.mood ? `情绪：${scene.mood}` : "",
+        "保持角色一致性，动作连贯"
+      ].filter(Boolean).join("，")
+    };
+  });
+}
+
+function findMention(items, text) {
+  return items.find((item) => item.name && text.includes(item.name)) || null;
+}
+
+function findMentions(items, text) {
+  return items
+    .filter((item) => item.name && text.includes(item.name))
+    .map((item) => item.name);
+}
+
 function splitList(value) {
   if (!value) return [];
   return value
@@ -1519,7 +2772,9 @@ function normalizedImageParams(params) {
   return {
     aspect_ratio: params.aspect_ratio,
     resolution: params.resolution,
-    count: clampNumber(Number(params.count), 1, 8)
+    count: clampNumber(Number(params.count), 1, 8),
+    guidance: clampNumber(Number(params.guidance), 1, 20),
+    negative_prompt: params.negative_prompt || undefined
   };
 }
 
@@ -1528,7 +2783,8 @@ function normalizedVideoParams(params) {
     duration: clampNumber(Number(params.duration), 1, 20),
     motion: params.motion,
     camera_move: params.camera_move,
-    count: clampNumber(Number(params.count), 1, 4)
+    count: clampNumber(Number(params.count), 1, 4),
+    seed: params.seed || undefined
   };
 }
 
