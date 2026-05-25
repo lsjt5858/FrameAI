@@ -1671,16 +1671,20 @@ textarea:focus {
 }
 
 .development-card-grid,
-.development-shot-grid {
+.development-shot-grid,
+.capability-grid {
   display: grid;
   gap: 14px;
 }
 
-.development-card-grid {
+.development-card-grid,
+.capability-grid {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 
-.development-edit-card {
+.development-edit-card,
+.capability-card,
+.batch-action-bar {
   display: grid;
   gap: 12px;
   padding: 16px;
@@ -1688,6 +1692,20 @@ textarea:focus {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 12px 32px rgba(23, 32, 51, 0.05);
+}
+
+.batch-action-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin-bottom: 16px;
+  background: #f8fbff;
+  box-shadow: none;
+}
+
+.batch-action-bar p,
+.capability-card p {
+  margin: 4px 0 0;
+  color: #6a7891;
 }
 
 .development-edit-card label {
@@ -1720,15 +1738,224 @@ textarea:focus {
   margin-top: 4px;
 }
 
+.guide-next-button {
+  max-width: 260px;
+  border-color: #c8d0ff;
+  background: #eef1ff;
+  color: #343cba;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide-next-button:hover {
+  border-color: #7c8ef4;
+  background: #e6ebff;
+}
+
+.guide-summary,
+.guide-progress-panel,
+.guide-card,
+.guide-hero-current {
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(23, 32, 51, 0.05);
+}
+
+.guide-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    linear-gradient(90deg, rgba(89, 103, 232, 0.08), rgba(36, 146, 124, 0.08));
+}
+
+.guide-summary h3,
+.guide-card h3,
+.guide-hero-current strong {
+  margin: 4px 0 0;
+  color: #172033;
+  letter-spacing: 0;
+}
+
+.guide-summary p,
+.guide-card p,
+.guide-hero-current p,
+.guide-progress-panel p {
+  margin: 6px 0 0;
+  color: #5f6f88;
+}
+
+.guide-summary-side {
+  display: grid;
+  gap: 10px;
+}
+
+.guide-progress-label,
+.guide-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.guide-progress-label span {
+  color: #6a7891;
+  font-size: 13px;
+}
+
+.guide-progress-label strong {
+  color: #172033;
+}
+
+.guide-progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7ebf3;
+}
+
+.guide-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #5967e8, #24927c);
+}
+
+.guide-hero {
+  align-items: stretch;
+}
+
+.guide-hero-current {
+  width: min(340px, 100%);
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: none;
+}
+
+.guide-progress-panel {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.guide-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 16px;
+}
+
+.guide-card.current {
+  border-color: #aeb8ff;
+  background: #f7f8ff;
+}
+
+.guide-card.done {
+  border-color: #b7e4cf;
+  background: #f4fbf7;
+}
+
+.guide-card.todo {
+  background: #ffffff;
+}
+
+.guide-step-index {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #edf2f7;
+  color: #48566c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.guide-card.current .guide-step-index {
+  background: #e4e8ff;
+  color: #343cba;
+}
+
+.guide-card.done .guide-step-index {
+  background: #dff6eb;
+  color: #16684f;
+}
+
+.guide-output {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e4eaf3;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.guide-output dt {
+  color: #6a7891;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.guide-output dd {
+  margin: 0;
+  color: #243047;
+}
+
+.status.done {
+  background: #dff6eb;
+  color: #16684f;
+}
+
+.status.current {
+  background: #eef1ff;
+  color: #343cba;
+}
+
+.status.todo {
+  background: #eef2f7;
+  color: #5f6f88;
+}
+
 @media (max-width: 1160px) {
   .development-flow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .guide-summary {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
   .development-flow,
-  .development-checklist {
+  .development-checklist,
+  .batch-action-bar,
+  .guide-summary,
+  .guide-grid,
+  .guide-hero {
     grid-template-columns: 1fr;
+  }
+
+  .guide-next-button,
+  .guide-hero-current {
+    width: 100%;
+    max-width: none;
   }
 }

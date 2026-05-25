@@ -4,6 +4,7 @@ import { api, fileUrl } from "./api/client.js";
 const NAV_GROUPS = ["工作台", "素材", "生成", "系统"];
 const NAV_ITEMS = [
   { id: "overview", label: "总览", hint: "生产概览", group: "工作台" },
+  { id: "guide", label: "生产向导", hint: "下一步", group: "工作台" },
   { id: "projects", label: "项目列表", hint: "创建 / 筛选", group: "工作台" },
   { id: "project-detail", label: "项目详情", hint: "进度 / 近期", group: "工作台" },
   { id: "development", label: "剧本开发", hint: "人物 / 拆镜", group: "工作台" },
@@ -75,6 +76,23 @@ const DEFAULT_DEVELOPMENT_WORKSPACE = {
     prompts: false,
     storage: false,
     pilot: false
+  },
+  qualityChecks: {
+    naming: false,
+    faceHands: false,
+    characterConsistency: false,
+    dialogueProof: false,
+    audioSync: false,
+    platformSpec: false,
+    mobilePreview: false
+  },
+  publishPlan: {
+    platform: "抖音 / B站",
+    schedule: "",
+    titleA: "",
+    titleB: "",
+    coverBrief: "",
+    metrics: "播放量、完播率、互动率、评论高频词"
   }
 };
 
@@ -86,6 +104,37 @@ const DEVELOPMENT_CHECKLIST = [
   ["prompts", "建立角色/场景/镜头提示词公式"],
   ["storage", "建立命名规范和素材存储规则"],
   ["pilot", "至少跑通第一集：剧本 -> 分镜 -> 出图 -> 审核"]
+];
+
+const QUALITY_CHECKLIST = [
+  ["naming", "文件命名规范：EP01_S02_F003_v2"],
+  ["faceHands", "手、脸、细节异常检查"],
+  ["characterConsistency", "角色一致性与人物圣经对照"],
+  ["dialogueProof", "对白、字幕和错别字校对"],
+  ["audioSync", "配音、音效和画面对位"],
+  ["platformSpec", "平台规格：比例、时长、画质、字幕安全区"],
+  ["mobilePreview", "手机端预览通过"]
+];
+
+const CAPABILITY_GAPS = [
+  { name: "剧本开发", status: "已补充", detail: "故事定位、人物圣经、场景道具、单集剧本和拆镜草稿" },
+  { name: "提示词公式沉淀", status: "本轮补充", detail: "人物/场景/镜头公式可保存到模板库" },
+  { name: "批量出图流水线", status: "本轮补充", detail: "可对已有分镜批量创建生图或生视频任务" },
+  { name: "质检交付", status: "本轮补充", detail: "交付检查、发布计划和复盘指标进入剧本开发台" },
+  { name: "后端结构化存储", status: "待做", detail: "人物、场景、道具、剧本目前仍是浏览器本地工作区" },
+  { name: "音频与发布数据", status: "待做", detail: "AI配音、字幕、平台发布和真实数据回收尚未接后端" }
+];
+
+const GUIDE_STEP_DEFINITIONS = [
+  { key: "project", title: "创建项目", tab: "projects", summary: "先建一个项目容器，后续剧本、分镜、素材和任务都挂在这里。", output: "项目名称、项目说明" },
+  { key: "script", title: "故事定位与单集剧本", tab: "development", view: "script", summary: "写一句话卖点、世界观和第一集脚本。", output: "故事定位、世界观、单集剧本" },
+  { key: "bible", title: "人物圣经与视觉圣经", tab: "development", view: "bible", summary: "锁定人物语言风格、外形关键词、场景和道具。", output: "人物卡、场景库、道具库" },
+  { key: "drafts", title: "拆镜并导入分镜", tab: "development", view: "shots", summary: "把单集剧本拆成镜头草稿，再导入分镜工作台。", output: "分镜列表、镜头提示词" },
+  { key: "templates", title: "沉淀提示词模板", tab: "development", view: "bible", summary: "把人物、场景、生图、生视频公式保存为可复用模板。", output: "人物/场景/镜头模板" },
+  { key: "image", title: "批量生图", tab: "shots", summary: "按分镜表逐格创建生图任务，获得候选图。", output: "分镜候选图素材" },
+  { key: "review", title: "素材评审与入选", tab: "assets", summary: "筛选候选图，标记喜欢/入选/废弃。", output: "入选图、评审记录" },
+  { key: "video", title: "批量生视频", tab: "shots", summary: "用入选图和视频提示词批量创建视频任务。", output: "分镜视频素材" },
+  { key: "delivery", title: "质检发布", tab: "development", view: "delivery", summary: "做命名、手脸、字幕、平台规格和发布计划检查。", output: "质检清单、发布计划" }
 ];
 
 function App() {
@@ -223,6 +272,38 @@ function App() {
     () => projectAssets.filter((asset) => asset.is_selected).length,
     [projectAssets]
   );
+  const guideSteps = useMemo(
+    () => buildGuideSteps({
+      projects,
+      selectedProject,
+      projectShots,
+      projectAssets,
+      projectTasks,
+      templates,
+      selectedAssetsCount,
+      developmentWorkspace
+    }),
+    [
+      projects,
+      selectedProject,
+      projectShots,
+      projectAssets,
+      projectTasks,
+      templates,
+      selectedAssetsCount,
+      developmentWorkspace
+    ]
+  );
+  const currentGuideStep = useMemo(
+    () => guideSteps.find((step) => step.status === "current") || guideSteps[guideSteps.length - 1],
+    [guideSteps]
+  );
+
+  function navigateToGuideStep(step) {
+    if (!step) return;
+    if (step.view) setDevelopmentView(step.view);
+    setActiveTab(step.tab);
+  }
 
   async function loadAll() {
     setError("");
@@ -390,6 +471,86 @@ function App() {
       setDevelopmentWorkspace((workspace) => ({ ...workspace, shotDrafts: drafts }));
       await refreshProjectData();
       setActiveTab("shots");
+    });
+  }
+
+  async function handleSaveDevelopmentTemplates() {
+    const templatesToCreate = buildDevelopmentPromptTemplates(developmentWorkspace);
+    await runAction(async () => {
+      const createdTemplates = [];
+      for (const template of templatesToCreate) {
+        createdTemplates.push(await api.createTemplate(template));
+      }
+      setTemplates([...createdTemplates, ...templates]);
+      setDevelopmentWorkspace((workspace) => ({
+        ...workspace,
+        checklist: { ...workspace.checklist, prompts: true }
+      }));
+      setActiveTab("templates");
+    });
+  }
+
+  function updateQualityCheck(key, checked) {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      qualityChecks: { ...workspace.qualityChecks, [key]: checked }
+    }));
+  }
+
+  function updatePublishPlan(field, value) {
+    setDevelopmentWorkspace((workspace) => ({
+      ...workspace,
+      publishPlan: { ...workspace.publishPlan, [field]: value }
+    }));
+  }
+
+  async function handleCreateBatchShotTasks(type) {
+    if (!currentProjectId) {
+      setError("请先创建或选择一个项目。");
+      return;
+    }
+
+    const targetShots = projectShots.filter((shot) => {
+      const prompt = type === "image" ? shot.image_prompt || shot.story : shot.video_prompt || shot.story;
+      return prompt.trim();
+    });
+
+    if (!targetShots.length) {
+      setError(type === "image" ? "当前项目没有可用于生图的分镜提示词。" : "当前项目没有可用于生视频的分镜提示词。");
+      return;
+    }
+
+    await runAction(async () => {
+      const providerInfo = type === "image"
+        ? imageProviders.find((provider) => provider.id === imageProviderId) || imageProviders[0]
+        : videoProviders.find((provider) => provider.id === videoProviderId) || videoProviders[0];
+      const provider = providerInfo?.id || "mock";
+      const model = type === "image"
+        ? providerInfo?.image_model || "mock-image-v1"
+        : providerInfo?.video_model || "mock-video-v1";
+      const params = type === "image" ? normalizedImageParams(imageParams) : normalizedVideoParams(videoParams);
+      const max_retries = type === "image" ? Number(imageParams.max_retries) : Number(videoParams.max_retries);
+      const create = type === "image" ? api.createImageTask : api.createVideoTask;
+
+      for (const shot of targetShots) {
+        const prompt = type === "image" ? shot.image_prompt || shot.story : shot.video_prompt || shot.story;
+        const reference_asset_ids = type === "image"
+          ? shot.reference_asset_ids
+          : [shot.selected_image_asset_id || shot.reference_asset_ids[0]].filter(Boolean);
+        await create({
+          project_id: currentProjectId,
+          shot_id: shot.id,
+          provider,
+          model,
+          prompt,
+          params,
+          reference_asset_ids,
+          max_retries: clampNumber(max_retries, 0, 5)
+        });
+      }
+
+      setActiveTab("tasks");
+      await refreshProjectData();
     });
   }
 
@@ -795,6 +956,9 @@ function App() {
                 </option>
               ))}
             </select>
+            <button className="guide-next-button" type="button" onClick={() => navigateToGuideStep(currentGuideStep)}>
+              下一步：{currentGuideStep?.title || "查看向导"}
+            </button>
             <button className="ghost" type="button" onClick={() => setActiveTab("tasks")}>
               任务队列
             </button>
@@ -818,10 +982,21 @@ function App() {
             logs={projectLogs}
             runningTasks={runningTasks}
             selectedAssetsCount={selectedAssetsCount}
+            guideSteps={guideSteps}
+            currentStep={currentGuideStep}
             onOpenProjects={() => setActiveTab("projects")}
             onOpenShots={() => setActiveTab("shots")}
             onOpenGenerate={() => setActiveTab("image-gen")}
             onOpenTasks={() => setActiveTab("tasks")}
+            onOpenGuide={() => setActiveTab("guide")}
+          />
+        )}
+
+        {activeTab === "guide" && (
+          <GuidePage
+            steps={guideSteps}
+            currentStep={currentGuideStep}
+            onNavigate={navigateToGuideStep}
           />
         )}
 
@@ -854,6 +1029,9 @@ function App() {
             }}
             onBuildShotDrafts={handleBuildShotDrafts}
             onImportShotDrafts={handleImportShotDrafts}
+            onSavePromptTemplates={handleSaveDevelopmentTemplates}
+            onQualityCheckChange={updateQualityCheck}
+            onPublishPlanChange={updatePublishPlan}
           />
         )}
 
@@ -1039,6 +1217,16 @@ function App() {
             </Panel>
             <Panel title="分镜工作台" subtitle="左侧维护分镜，右侧聚焦当前镜头、提示词和生成结果。">
               <RequireProject project={selectedProject}>
+                <div className="batch-action-bar">
+                  <div>
+                    <strong>批量生产</strong>
+                    <p>按当前分镜提示词批量创建任务，适合 SOP 里的“按分镜表逐格出图”。</p>
+                  </div>
+                  <div className="button-row">
+                    <button type="button" onClick={() => handleCreateBatchShotTasks("image")}>批量生图</button>
+                    <button type="button" onClick={() => handleCreateBatchShotTasks("video")}>批量生视频</button>
+                  </div>
+                </div>
                 <ShotFocus
                   shot={selectedShot}
                   assets={projectAssets}
@@ -1631,10 +1819,13 @@ function OverviewPage({
   logs,
   runningTasks,
   selectedAssetsCount,
+  guideSteps,
+  currentStep,
   onOpenProjects,
   onOpenShots,
   onOpenGenerate,
-  onOpenTasks
+  onOpenTasks,
+  onOpenGuide
 }) {
   const latestProjects = projects.slice(0, 3);
   const latestTasks = tasks.slice(0, 4);
@@ -1655,6 +1846,7 @@ function OverviewPage({
         </div>
         <div className="hero-actions">
           <button className="primary" type="button" onClick={onOpenProjects}>新建或切换项目</button>
+          <button className="ghost" type="button" onClick={onOpenGuide}>查看生产向导</button>
           <button className="ghost" type="button" onClick={onOpenGenerate}>进入生成中心</button>
         </div>
       </section>
@@ -1667,6 +1859,8 @@ function OverviewPage({
         <Metric label="已入选素材" value={selectedAssetsCount} />
         <Metric label="成功任务" value={successCount} />
       </section>
+
+      <GuideSummary steps={guideSteps} currentStep={currentStep} onOpenGuide={onOpenGuide} />
 
       <section className="workflow-strip" aria-label="制作流程">
         {[
@@ -1763,6 +1957,100 @@ function OverviewPage({
             {failedCount ? <div className="notice error compact-notice">当前有 {failedCount} 个失败任务，建议进入任务页查看原因。</div> : null}
           </div>
         </Panel>
+      </section>
+    </section>
+  );
+}
+
+function GuideSummary({ steps, currentStep, onOpenGuide }) {
+  const completed = steps.filter((step) => step.status === "done").length;
+  const progress = steps.length ? Math.round((completed / steps.length) * 100) : 0;
+
+  return (
+    <section className="guide-summary">
+      <div>
+        <span className="eyebrow">Production Guide</span>
+        <h3>当前建议：{currentStep?.title || "完成生产闭环"}</h3>
+        <p>{currentStep?.summary || "所有关键环节已经跑通，可以进入复盘和下一集迭代。"}</p>
+      </div>
+      <div className="guide-summary-side">
+        <div className="guide-progress-label">
+          <span>流程进度</span>
+          <strong>{completed} / {steps.length}</strong>
+        </div>
+        <div className="guide-progress" aria-label="生产向导进度">
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <button className="primary" type="button" onClick={onOpenGuide}>打开向导</button>
+      </div>
+    </section>
+  );
+}
+
+function GuidePage({ steps, currentStep, onNavigate }) {
+  const completed = steps.filter((step) => step.status === "done").length;
+  const progress = steps.length ? Math.round((completed / steps.length) * 100) : 0;
+
+  return (
+    <section className="overview-stack guide-page">
+      <section className="hero-panel guide-hero">
+        <div className="hero-copy">
+          <span className="eyebrow">Production Guide</span>
+          <h2>AI 视频制作生产向导</h2>
+          <p>
+            从项目、剧本、人物、拆镜到生图、生视频和发布质检，按当前数据自动标记下一步，
+            让每次打开平台都知道该推进哪个环节。
+          </p>
+        </div>
+        <div className="guide-hero-current">
+          <span className={`status ${currentStep?.status || "todo"}`}>
+            {getGuideStatusLabel(currentStep?.status)}
+          </span>
+          <strong>{currentStep?.title || "生产闭环已完成"}</strong>
+          <p>{currentStep?.output || "继续复盘表现，准备下一集。"}</p>
+          {currentStep ? (
+            <button className="primary" type="button" onClick={() => onNavigate(currentStep)}>
+              进入当前步骤
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="guide-progress-panel">
+        <div className="item-heading">
+          <div>
+            <strong>整条链路进度</strong>
+            <p>已完成 {completed} 个关键环节，剩余 {Math.max(steps.length - completed, 0)} 个环节。</p>
+          </div>
+          <strong>{progress}%</strong>
+        </div>
+        <div className="guide-progress" aria-label="整条链路进度">
+          <span style={{ width: `${progress}%` }} />
+        </div>
+      </section>
+
+      <section className="guide-grid">
+        {steps.map((step, index) => (
+          <article className={`guide-card ${step.status}`} key={step.key}>
+            <div className="guide-status-row">
+              <span className="guide-step-index">{String(index + 1).padStart(2, "0")}</span>
+              <span className={`status ${step.status}`}>{getGuideStatusLabel(step.status)}</span>
+            </div>
+            <h3>{step.title}</h3>
+            <p>{step.summary}</p>
+            <dl className="guide-output">
+              <dt>产出</dt>
+              <dd>{step.output}</dd>
+            </dl>
+            <button
+              className={step.status === "current" ? "primary" : "ghost"}
+              type="button"
+              onClick={() => onNavigate(step)}
+            >
+              {step.status === "done" ? "查看结果" : "去处理"}
+            </button>
+          </article>
+        ))}
       </section>
     </section>
   );
@@ -1882,9 +2170,13 @@ function DevelopmentPage({
   onRemoveListItem,
   onChecklistChange,
   onBuildShotDrafts,
-  onImportShotDrafts
+  onImportShotDrafts,
+  onSavePromptTemplates,
+  onQualityCheckChange,
+  onPublishPlanChange
 }) {
   const doneCount = DEVELOPMENT_CHECKLIST.filter(([key]) => workspace.checklist[key]).length;
+  const qualityDoneCount = QUALITY_CHECKLIST.filter(([key]) => workspace.qualityChecks[key]).length;
   const phaseCards = [
     ["01", "故事策划", "选题、受众、世界观和人物圣经"],
     ["02", "视觉圣经", "风格、角色、场景、道具和提示词公式"],
@@ -1911,6 +2203,7 @@ function DevelopmentPage({
         <div className="hero-actions">
           <button className="primary" type="button" onClick={onBuildShotDrafts}>拆成镜头草稿</button>
           <button type="button" onClick={onImportShotDrafts}>导入分镜工作台</button>
+          <button type="button" onClick={onSavePromptTemplates}>沉淀提示词模板</button>
         </div>
       </section>
 
@@ -1930,6 +2223,8 @@ function DevelopmentPage({
           ["bible", "人物圣经"],
           ["assets", "场景道具"],
           ["shots", "拆镜草稿"],
+          ["delivery", "质检发布"],
+          ["gaps", "能力缺口"],
           ["checklist", "SOP清单"]
         ].map(([value, label]) => (
           <button
@@ -2023,7 +2318,10 @@ function DevelopmentPage({
               </article>
             ))}
           </div>
-          <button type="button" onClick={() => onAddListItem("characters", { name: "新人物", role: "", voice: "", visual: "" })}>新增人物</button>
+          <div className="button-row">
+            <button type="button" onClick={() => onAddListItem("characters", { name: "新人物", role: "", voice: "", visual: "" })}>新增人物</button>
+            <button type="button" onClick={onSavePromptTemplates}>保存人物公式到模板库</button>
+          </div>
         </Panel>
       )}
 
@@ -2043,6 +2341,7 @@ function DevelopmentPage({
               onAdd={() => onAddListItem("scenes", { name: "新场景", time: "", mood: "", visual: "" })}
               onRemove={onRemoveListItem}
             />
+            <button type="button" onClick={onSavePromptTemplates}>保存场景公式到模板库</button>
           </Panel>
           <Panel title="道具库" subtitle="关键道具会进入分镜备注和提示词，帮助镜头连续。">
             <EditableDevelopmentList
@@ -2095,6 +2394,77 @@ function DevelopmentPage({
               </article>
             ))}
             {!workspace.shotDrafts.length ? <div className="empty-state">还没有镜头草稿，先从单集剧本拆镜。</div> : null}
+          </div>
+        </Panel>
+      )}
+
+      {view === "delivery" && (
+        <section className="overview-grid">
+          <Panel title="质检交付" subtitle="承接 SOP 的角色一致性、字幕、平台规格和多端预览检查。">
+            <div className="metric-grid">
+              <Metric label="质检完成" value={`${qualityDoneCount}/${QUALITY_CHECKLIST.length}`} />
+              <Metric label="清单完成" value={`${doneCount}/${DEVELOPMENT_CHECKLIST.length}`} />
+              <Metric label="草稿镜头" value={workspace.shotDrafts.length} />
+            </div>
+            <div className="development-checklist">
+              {QUALITY_CHECKLIST.map(([key, label]) => (
+                <label className="checkline" key={key}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(workspace.qualityChecks[key])}
+                    onChange={(event) => onQualityCheckChange(key, event.target.checked)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel title="发布计划" subtitle="先把平台适配和复盘指标写下来，后续可接发布和数据回收。">
+            <div className="stack">
+              <div className="field-grid">
+                <label>
+                  发布平台
+                  <input value={workspace.publishPlan.platform} onChange={(event) => onPublishPlanChange("platform", event.target.value)} />
+                </label>
+                <label>
+                  发布时间
+                  <input value={workspace.publishPlan.schedule} onChange={(event) => onPublishPlanChange("schedule", event.target.value)} placeholder="每周六 20:00" />
+                </label>
+              </div>
+              <label>
+                标题 A
+                <input value={workspace.publishPlan.titleA} onChange={(event) => onPublishPlanChange("titleA", event.target.value)} placeholder="强冲突标题" />
+              </label>
+              <label>
+                标题 B
+                <input value={workspace.publishPlan.titleB} onChange={(event) => onPublishPlanChange("titleB", event.target.value)} placeholder="悬念/情绪标题" />
+              </label>
+              <label>
+                封面说明
+                <textarea value={workspace.publishPlan.coverBrief} onChange={(event) => onPublishPlanChange("coverBrief", event.target.value)} rows={4} placeholder="主视觉、人物表情、标题文案、安全区" />
+              </label>
+              <label>
+                复盘指标
+                <textarea value={workspace.publishPlan.metrics} onChange={(event) => onPublishPlanChange("metrics", event.target.value)} rows={3} />
+              </label>
+            </div>
+          </Panel>
+        </section>
+      )}
+
+      {view === "gaps" && (
+        <Panel title="当前能力缺口" subtitle="按 SOP 对照平台能力，标记哪些已经可操作、哪些还需要后端或外部工具接入。">
+          <div className="capability-grid">
+            {CAPABILITY_GAPS.map((item) => (
+              <article className="capability-card" key={item.name}>
+                <div className="item-heading">
+                  <strong>{item.name}</strong>
+                  <span className={`status ${item.status === "待做" ? "failed" : item.status === "本轮补充" ? "running" : "succeeded"}`}>{item.status}</span>
+                </div>
+                <p>{item.detail}</p>
+              </article>
+            ))}
           </div>
         </Panel>
       )}
@@ -2676,8 +3046,90 @@ function mergeDevelopmentWorkspace(saved) {
     checklist: {
       ...DEFAULT_DEVELOPMENT_WORKSPACE.checklist,
       ...(saved.checklist || {})
+    },
+    qualityChecks: {
+      ...DEFAULT_DEVELOPMENT_WORKSPACE.qualityChecks,
+      ...(saved.qualityChecks || {})
+    },
+    publishPlan: {
+      ...DEFAULT_DEVELOPMENT_WORKSPACE.publishPlan,
+      ...(saved.publishPlan || {})
     }
   };
+}
+
+function buildDevelopmentPromptTemplates(workspace) {
+  const characterSummary = workspace.characters
+    .map((character) => `${character.name}：${character.role}；语言=${character.voice}；视觉=${character.visual}`)
+    .join("\n");
+  const sceneSummary = workspace.scenes
+    .map((scene) => `${scene.name}：${scene.time}；${scene.mood}；${scene.visual}`)
+    .join("\n");
+  const propSummary = workspace.props
+    .map((prop) => `${prop.name}：${prop.type}；${prop.visual}；用途=${prop.usage}`)
+    .join("\n");
+
+  return [
+    {
+      name: "人物一致性公式",
+      category: "character",
+      content: [
+        "风格：{{visual_style}}",
+        "人物圣经：",
+        characterSummary || "{{character_bible}}",
+        "当前人物：{{character_name}}",
+        "表情：{{expression}}，动作：{{action}}，服装：{{costume}}",
+        "要求：保持脸型、发型、服装、气质一致。"
+      ].join("\n"),
+      variables: ["visual_style", "character_name", "expression", "action", "costume"],
+      notes: "由剧本开发台生成"
+    },
+    {
+      name: "场景资产公式",
+      category: "scene",
+      content: [
+        "视觉风格：{{visual_style}}",
+        "场景库：",
+        sceneSummary || "{{scene_bible}}",
+        "当前场景：{{scene_name}}，时间：{{time}}，天气/氛围：{{mood}}",
+        "镜头重点：{{focus}}"
+      ].join("\n"),
+      variables: ["visual_style", "scene_name", "time", "mood", "focus"],
+      notes: "由剧本开发台生成"
+    },
+    {
+      name: "漫剧分镜生图公式",
+      category: "image",
+      content: [
+        "项目卖点：{{logline}}",
+        "视觉风格：{{visual_style}}",
+        "人物：{{characters}}",
+        "场景：{{scene}}",
+        "道具：{{props}}",
+        "镜头类型：{{camera}}",
+        "剧情动作：{{story}}",
+        "道具库参考：",
+        propSummary || "{{prop_bible}}",
+        "要求：漫画分镜，构图清晰，角色一致，细节稳定。"
+      ].join("\n"),
+      variables: ["logline", "visual_style", "characters", "scene", "props", "camera", "story"],
+      notes: "由剧本开发台生成"
+    },
+    {
+      name: "漫剧分镜生视频公式",
+      category: "video",
+      content: [
+        "镜头类型：{{camera}}",
+        "剧情动作：{{story}}",
+        "对白节奏：{{dialogue}}",
+        "情绪：{{mood}}",
+        "镜头运动：{{camera_move}}",
+        "要求：动作连贯、角色一致、节奏适合短剧。"
+      ].join("\n"),
+      variables: ["camera", "story", "dialogue", "mood", "camera_move"],
+      notes: "由剧本开发台生成"
+    }
+  ];
 }
 
 function buildShotDraftsFromScript(workspace) {
@@ -2758,6 +3210,81 @@ function findMentions(items, text) {
   return items
     .filter((item) => item.name && text.includes(item.name))
     .map((item) => item.name);
+}
+
+function buildGuideSteps({
+  projects,
+  selectedProject,
+  projectShots,
+  projectAssets,
+  projectTasks,
+  templates,
+  selectedAssetsCount,
+  developmentWorkspace
+}) {
+  const hasProject = Boolean(selectedProject || projects.length);
+  const hasStoryInput = developmentWorkspace.checklist.topic
+    || developmentWorkspace.checklist.script
+    || hasChangedText(developmentWorkspace.logline, DEFAULT_DEVELOPMENT_WORKSPACE.logline)
+    || hasChangedText(developmentWorkspace.worldview, DEFAULT_DEVELOPMENT_WORKSPACE.worldview)
+    || hasChangedText(developmentWorkspace.episodeScript, DEFAULT_DEVELOPMENT_WORKSPACE.episodeScript);
+  const hasBible = developmentWorkspace.checklist.bible
+    || developmentWorkspace.checklist.visual
+    || hasChangedText(developmentWorkspace.visualStyle, DEFAULT_DEVELOPMENT_WORKSPACE.visualStyle)
+    || hasChangedList(developmentWorkspace.characters, DEFAULT_DEVELOPMENT_WORKSPACE.characters)
+    || hasChangedList(developmentWorkspace.scenes, DEFAULT_DEVELOPMENT_WORKSPACE.scenes)
+    || hasChangedList(developmentWorkspace.props, DEFAULT_DEVELOPMENT_WORKSPACE.props);
+  const hasDrafts = developmentWorkspace.shotDrafts.length > 0 || projectShots.length > 0;
+  const hasTemplates = developmentWorkspace.checklist.prompts || templates.some(isDevelopmentTemplate);
+  const hasImageOutput = projectTasks.some((task) => task.task_type === "image")
+    || projectAssets.some((asset) => asset.asset_type === "image");
+  const hasReviewedAssets = selectedAssetsCount > 0
+    || projectAssets.some((asset) => asset.is_selected || asset.review_status === "liked")
+    || projectShots.some((shot) => Boolean(shot.selected_image_asset_id));
+  const hasVideoOutput = projectTasks.some((task) => task.task_type === "video")
+    || projectAssets.some((asset) => asset.asset_type === "video");
+  const hasDeliveryChecks = QUALITY_CHECKLIST.every(([key]) => developmentWorkspace.qualityChecks[key]);
+  const completionMap = {
+    project: hasProject,
+    script: hasProject && hasStoryInput,
+    bible: hasProject && hasBible,
+    drafts: hasProject && hasDrafts,
+    templates: hasProject && hasTemplates,
+    image: hasProject && hasImageOutput,
+    review: hasProject && hasReviewedAssets,
+    video: hasProject && hasVideoOutput,
+    delivery: hasProject && hasDeliveryChecks
+  };
+  const firstOpenIndex = GUIDE_STEP_DEFINITIONS.findIndex((step) => !completionMap[step.key]);
+
+  return GUIDE_STEP_DEFINITIONS.map((step, index) => ({
+    ...step,
+    done: Boolean(completionMap[step.key]),
+    status: completionMap[step.key] ? "done" : index === firstOpenIndex ? "current" : "todo"
+  }));
+}
+
+function hasChangedText(value, defaultValue) {
+  const trimmed = String(value || "").trim();
+  return Boolean(trimmed) && trimmed !== String(defaultValue || "").trim();
+}
+
+function hasChangedList(value, defaultValue) {
+  return JSON.stringify(value || []) !== JSON.stringify(defaultValue || []);
+}
+
+function isDevelopmentTemplate(template) {
+  return template.notes === "由剧本开发台生成"
+    || ["人物一致性公式", "场景资产公式", "漫剧分镜生图公式", "漫剧分镜生视频公式"].includes(template.name);
+}
+
+function getGuideStatusLabel(status) {
+  const labels = {
+    done: "已完成",
+    current: "当前步骤",
+    todo: "待处理"
+  };
+  return labels[status] || "待处理";
 }
 
 function splitList(value) {
