@@ -183,3 +183,8 @@ class ApiCallLogOut(BaseModel):
     started_at: str
     finished_at: str
     duration_ms: int
+
+
+class ProviderConfigUpdate(BaseModel):
+    values: dict[str, str | None] = Field(default_factory=dict)
+    clear_secrets: list[str] = Field(default_factory=list)

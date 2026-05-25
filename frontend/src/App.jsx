@@ -146,6 +146,10 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
   const [providers, setProviders] = useState([]);
+  const [providerConfigs, setProviderConfigs] = useState([]);
+  const [providerEnvPath, setProviderEnvPath] = useState("");
+  const [providerConfigForms, setProviderConfigForms] = useState({});
+  const [savingProviderId, setSavingProviderId] = useState("");
   const [runtime, setRuntime] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT);
@@ -307,16 +311,20 @@ function App() {
 
   async function loadAll() {
     setError("");
-    const [projectData, templateData, providerData, runtimeData, logData] = await Promise.all([
+    const [projectData, templateData, providerData, providerConfigData, runtimeData, logData] = await Promise.all([
       api.listProjects(),
       api.listTemplates(),
       api.providers(),
+      api.providerConfigs(),
       api.runtime(),
       api.listLogs()
     ]);
     setProjects(projectData);
     setTemplates(templateData);
     setProviders(providerData.providers || []);
+    setProviderConfigs(providerConfigData.providers || []);
+    setProviderEnvPath(providerConfigData.env_path || "");
+    setProviderConfigForms(buildProviderConfigForms(providerConfigData.providers || []));
     setRuntime(runtimeData);
     setLogs(logData);
     const nextProjectId = selectedProjectId || projectData[0]?.id || "";
@@ -886,6 +894,53 @@ function App() {
       setVideoPrompt(content);
       setActiveTab("video-gen");
     }
+  }
+
+  function updateProviderConfigField(providerId, fieldName, value) {
+    setProviderConfigForms((forms) => ({
+      ...forms,
+      [providerId]: {
+        ...(forms[providerId] || {}),
+        [fieldName]: value
+      }
+    }));
+  }
+
+  async function handleSaveProviderConfig(providerConfig, event) {
+    event.preventDefault();
+    const form = providerConfigForms[providerConfig.id] || {};
+    const values = {};
+    const clearSecrets = [];
+
+    for (const field of providerConfig.fields) {
+      const clearFieldName = `${field.name}__clear`;
+      if (field.secret) {
+        if (form[clearFieldName]) {
+          clearSecrets.push(field.name);
+        } else if ((form[field.name] || "").trim()) {
+          values[field.name] = form[field.name].trim();
+        }
+        continue;
+      }
+      values[field.name] = (form[field.name] || "").trim();
+    }
+
+    setSavingProviderId(providerConfig.id);
+    await runAction(async () => {
+      const result = await api.updateProviderConfig(providerConfig.id, {
+        values,
+        clear_secrets: clearSecrets
+      });
+      const [providerData, providerConfigData] = await Promise.all([
+        api.providers(),
+        api.providerConfigs()
+      ]);
+      setProviders(result.providers || providerData.providers || []);
+      setProviderConfigs(providerConfigData.providers || []);
+      setProviderEnvPath(providerConfigData.env_path || "");
+      setProviderConfigForms(buildProviderConfigForms(providerConfigData.providers || []));
+    });
+    setSavingProviderId("");
   }
 
   return (
@@ -1749,22 +1804,17 @@ function App() {
         )}
 
         {activeTab === "settings" && (
-          <section className="page-grid">
-            <Panel title="Provider" subtitle="集中查看图片、视频供应商配置状态。">
-              <div className="template-list">
-                {providers.map((provider) => (
-                  <article className="template-item" key={provider.id}>
-                    <div className="item-heading">
-                      <strong>{provider.name}</strong>
-                      <span className={`tag ${provider.configured ? "" : "warning-tag"}`}>{provider.configured ? "已配置" : "未配置"}</span>
-                    </div>
-                    <p>{provider.description}</p>
-                    <p>生图模型：{provider.image_model}</p>
-                    <p>生视频模型：{provider.video_model}</p>
-                  </article>
-                ))}
-                {!providers.length ? <div className="empty-state">还没有加载到 Provider。</div> : null}
-              </div>
+          <section className="page-grid settings-grid">
+            <Panel title="模型 API Key" subtitle="在本机保存供应商密钥和模型名，配置后即可在生成中心调用真实模型。">
+              <ProviderConfigPanel
+                providerConfigs={providerConfigs}
+                providers={providers}
+                forms={providerConfigForms}
+                savingProviderId={savingProviderId}
+                envPath={providerEnvPath || runtime?.provider_env_path}
+                onFieldChange={updateProviderConfigField}
+                onSave={handleSaveProviderConfig}
+              />
             </Panel>
             <Panel title="默认设置与运行路径">
               <div className="stack">
@@ -2058,6 +2108,294 @@ function GuidePage({ steps, currentStep, onNavigate }) {
         ))}
       </section>
     </section>
+  );
+}
+
+function ProviderConfigPanel({
+  providerConfigs,
+  providers,
+  forms,
+  savingProviderId,
+  envPath,
+  onFieldChange,
+  onSave
+}) {
+  const [selectedProviderId, setSelectedProviderId] = useState(providerConfigs[0]?.id || "");
+  const [modelSelectionByProvider, setModelSelectionByProvider] = useState({});
+  const [advancedOpenByProvider, setAdvancedOpenByProvider] = useState({});
+
+  useEffect(() => {
+    if (!providerConfigs.some((providerConfig) => providerConfig.id === selectedProviderId)) {
+      setSelectedProviderId(providerConfigs[0]?.id || "");
+    }
+  }, [providerConfigs, selectedProviderId]);
+
+  if (!providerConfigs.length) {
+    return <div className="empty-state">还没有加载到可配置 Provider。</div>;
+  }
+
+  const selectedProviderConfig = providerConfigs.find((providerConfig) => providerConfig.id === selectedProviderId)
+    || providerConfigs[0];
+  const selectedProvider = providers.find((item) => item.id === selectedProviderConfig.id);
+  const form = forms[selectedProviderConfig.id] || {};
+  const modelFields = selectedProviderConfig.fields.filter((field) => field.capability);
+  const allModelChoices = providerConfigs.flatMap((providerConfig) => (
+    providerConfig.fields
+      .filter((field) => field.capability)
+      .flatMap((field) => (field.options || []).map((option) => ({
+        key: `${providerConfig.id}::${field.name}::${option.value}`,
+        providerId: providerConfig.id,
+        providerName: providerConfig.name,
+        fieldName: field.name,
+        capabilityLabel: field.capability_label || field.label,
+        value: option.value,
+        label: option.label || option.value
+      })))
+  ));
+  const selectedModelFieldName = modelSelectionByProvider[selectedProviderConfig.id]
+    || modelFields[0]?.name
+    || "";
+  const selectedModelField = modelFields.find((field) => field.name === selectedModelFieldName) || modelFields[0] || null;
+  const selectedModelValue = selectedModelField ? form[selectedModelField.name] || selectedModelField.options?.[0]?.value || "" : "";
+  const selectedModelChoiceKey = selectedModelField && selectedModelValue
+    ? `${selectedProviderConfig.id}::${selectedModelField.name}::${selectedModelValue}`
+    : "";
+  const selectedModelChoice = allModelChoices.find((choice) => choice.key === selectedModelChoiceKey);
+  const selectedModelIsKnown = Boolean(selectedModelChoice);
+  const secretFields = selectedProviderConfig.fields.filter((field) => field.secret);
+  const advancedFields = selectedProviderConfig.fields.filter((field) => !field.secret && !field.capability);
+  const advancedOpen = Boolean(advancedOpenByProvider[selectedProviderConfig.id]);
+  const configurableProviderIds = new Set(providerConfigs.map((providerConfig) => providerConfig.id));
+  const configuredCount = providers.filter((item) => configurableProviderIds.has(item.id) && item.configured).length;
+
+  function setSelectedModelField(fieldName) {
+    setModelSelectionByProvider((selections) => ({
+      ...selections,
+      [selectedProviderConfig.id]: fieldName
+    }));
+  }
+
+  function setAdvancedOpen(open) {
+    setAdvancedOpenByProvider((states) => ({
+      ...states,
+      [selectedProviderConfig.id]: open
+    }));
+  }
+
+  function handleSelectModelChoice(choiceKey) {
+    const choice = allModelChoices.find((item) => item.key === choiceKey);
+    if (!choice) return;
+
+    setSelectedProviderId(choice.providerId);
+    setModelSelectionByProvider((selections) => ({
+      ...selections,
+      [choice.providerId]: choice.fieldName
+    }));
+    onFieldChange(choice.providerId, `${choice.fieldName}__custom`, false);
+    onFieldChange(choice.providerId, choice.fieldName, choice.value);
+  }
+
+  return (
+    <div className="provider-config-list">
+      {envPath ? (
+        <div className="provider-env-path">
+          <span>保存位置</span>
+          <strong>{envPath}</strong>
+        </div>
+      ) : null}
+
+      <div className="model-choice-panel">
+        <label className="global-model-select">
+          <span className="field-label-row">
+            默认模型
+            <span className="required-badge">{allModelChoices.length}+ 候选</span>
+          </span>
+          <select
+            value={selectedModelIsKnown ? selectedModelChoiceKey : ""}
+            onChange={(event) => handleSelectModelChoice(event.target.value)}
+          >
+            {selectedModelIsKnown ? null : (
+              <option value="">
+                {selectedModelValue ? `当前自定义：${selectedModelValue}` : "选择默认模型"}
+              </option>
+            )}
+            {providerConfigs.map((providerConfig) => {
+              const providerChoices = allModelChoices.filter((choice) => choice.providerId === providerConfig.id);
+              if (!providerChoices.length) return null;
+              return (
+                <optgroup label={providerConfig.name} key={providerConfig.id}>
+                  {providerChoices.map((choice) => (
+                    <option value={choice.key} key={choice.key}>
+                      {choice.capabilityLabel} · {choice.label}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
+        <div className="model-choice-meta">
+          <span>{selectedModelChoice?.providerName || selectedProviderConfig.name}</span>
+          <span>{selectedModelChoice?.capabilityLabel || selectedModelField?.capability_label || selectedModelField?.label || "模型能力"}</span>
+          <span className={selectedProvider?.configured ? "provider-card-status configured" : "provider-card-status"}>
+            {selectedProvider?.configured ? "已配置" : "未配置"}
+          </span>
+          <span>{configuredCount}/{providerConfigs.length} Provider 已配置</span>
+        </div>
+      </div>
+
+      <form className="provider-config-card" onSubmit={(event) => onSave(selectedProviderConfig, event)}>
+        <div className="provider-config-header">
+          <div>
+            <span className="eyebrow">Provider</span>
+            <h3>{selectedProviderConfig.name}</h3>
+            <p>{selectedProviderConfig.description}</p>
+          </div>
+          <span className={`tag ${selectedProvider?.configured ? "" : "warning-tag"}`}>
+            {selectedProvider?.configured ? "已配置" : "未配置"}
+          </span>
+        </div>
+
+        {secretFields.length ? (
+          <div className="provider-field-grid provider-secret-grid">
+            {secretFields.map((field) => (
+              <ProviderConfigField
+                field={field}
+                form={form}
+                providerId={selectedProviderConfig.id}
+                onFieldChange={onFieldChange}
+                key={field.name}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {modelFields.length ? (
+          <section className="provider-model-box">
+            <label className="provider-model-select">
+              <span className="field-label-row">
+                模型能力
+                <span className="required-badge">必选</span>
+              </span>
+              <select value={selectedModelField?.name || ""} onChange={(event) => setSelectedModelField(event.target.value)}>
+                {modelFields.map((field) => (
+                  <option value={field.name} key={field.name}>
+                    {field.capability_label || field.label}
+                  </option>
+                ))}
+              </select>
+              <span className="field-help">选择生成场景后，只显示这个场景需要填写的模型参数。</span>
+            </label>
+            {selectedModelField ? (
+              <div className="provider-model-field">
+                <ProviderConfigField
+                  field={selectedModelField}
+                  form={form}
+                  providerId={selectedProviderConfig.id}
+                  onFieldChange={onFieldChange}
+                />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {advancedFields.length ? (
+          <section className="provider-advanced">
+            <button className="inline-disclosure" type="button" onClick={() => setAdvancedOpen(!advancedOpen)}>
+              {advancedOpen ? "收起高级参数" : "展开高级参数"}
+            </button>
+            {advancedOpen ? (
+              <div className="provider-field-grid">
+                {advancedFields.map((field) => (
+                  <ProviderConfigField
+                    field={field}
+                    form={form}
+                    providerId={selectedProviderConfig.id}
+                    onFieldChange={onFieldChange}
+                    key={field.name}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <div className="provider-form-footer">
+          <button className="primary" type="submit" disabled={savingProviderId === selectedProviderConfig.id}>
+            {savingProviderId === selectedProviderConfig.id ? "保存中..." : "保存当前配置"}
+          </button>
+          <p>只保存当前厂商配置；未显示的其他模型字段会保留现有默认值。</p>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ProviderConfigField({ field, form, providerId, onFieldChange }) {
+  const clearFieldName = `${field.name}__clear`;
+  const customFieldName = `${field.name}__custom`;
+  const value = form[field.name] || "";
+  const options = field.options || [];
+  const optionValues = options.map((option) => option.value);
+  const isCustom = Boolean(form[customFieldName]) || Boolean(options.length && value && !optionValues.includes(value));
+
+  return (
+    <label className={field.secret ? "secret-field" : ""}>
+      <span className="field-label-row">
+        {field.label}
+        {field.required ? <span className="required-badge">必填</span> : null}
+      </span>
+      {options.length && !field.secret ? (
+        <>
+          <select
+            value={isCustom ? "__custom__" : value}
+            onChange={(event) => {
+              if (event.target.value === "__custom__") {
+                onFieldChange(providerId, customFieldName, true);
+                if (optionValues.includes(value)) {
+                  onFieldChange(providerId, field.name, "");
+                }
+                return;
+              }
+              onFieldChange(providerId, customFieldName, false);
+              onFieldChange(providerId, field.name, event.target.value);
+            }}
+          >
+            <option value="">选择{field.label}</option>
+            {options.map((option) => (
+              <option value={option.value} key={option.value}>{option.label || option.value}</option>
+            ))}
+            <option value="__custom__">自定义模型 / Endpoint</option>
+          </select>
+          {isCustom ? (
+            <input
+              value={value}
+              placeholder={field.placeholder || "输入自定义模型或 Endpoint ID"}
+              onChange={(event) => onFieldChange(providerId, field.name, event.target.value)}
+            />
+          ) : null}
+        </>
+      ) : (
+        <input
+          type={field.secret ? "password" : "text"}
+          value={value}
+          placeholder={field.secret && field.configured ? `${field.masked_value}，留空不覆盖` : field.placeholder}
+          disabled={Boolean(form[clearFieldName])}
+          onChange={(event) => onFieldChange(providerId, field.name, event.target.value)}
+        />
+      )}
+      <span className="field-help">{field.env}</span>
+      {field.secret && field.configured ? (
+        <div className="checkline compact-checkline">
+          <input
+            type="checkbox"
+            checked={Boolean(form[clearFieldName])}
+            onChange={(event) => onFieldChange(providerId, clearFieldName, event.target.checked)}
+          />
+          <span>清除已保存密钥</span>
+        </div>
+      ) : null}
+    </label>
   );
 }
 
@@ -3290,6 +3628,17 @@ function getGuideStatusLabel(status) {
     todo: "待处理"
   };
   return labels[status] || "待处理";
+}
+
+function buildProviderConfigForms(providerConfigs) {
+  return Object.fromEntries(
+    providerConfigs.map((providerConfig) => [
+      providerConfig.id,
+      Object.fromEntries(
+        providerConfig.fields.map((field) => [field.name, field.secret ? "" : field.value || ""])
+      )
+    ])
+  );
 }
 
 function splitList(value) {

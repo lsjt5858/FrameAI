@@ -63,5 +63,10 @@ export const api = {
   listLogs: (taskId) => request(`/logs${taskId ? `?task_id=${taskId}` : ""}`),
 
   providers: () => request("/settings/providers"),
+  providerConfigs: () => request("/settings/provider-configs"),
+  updateProviderConfig: (id, payload) => request(`/settings/provider-configs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  }),
   runtime: () => request("/settings/runtime")
 };
