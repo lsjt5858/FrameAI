@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 const FILE_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
 async function request(path, options = {}) {
@@ -63,5 +63,10 @@ export const api = {
   listLogs: (taskId) => request(`/logs${taskId ? `?task_id=${taskId}` : ""}`),
 
   providers: () => request("/settings/providers"),
+  providerConfigs: () => request("/settings/provider-configs"),
+  updateProviderConfig: (id, payload) => request(`/settings/provider-configs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  }),
   runtime: () => request("/settings/runtime")
 };
