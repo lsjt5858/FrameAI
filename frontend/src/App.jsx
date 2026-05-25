@@ -32,7 +32,7 @@ const EMPTY_SHOT = {
 const EMPTY_TEMPLATE = { name: "", category: "image", content: "", variables: "", notes: "" };
 const EMPTY_IMAGE_PARAMS = {
   aspect_ratio: "16:9",
-  resolution: "1280x720",
+  resolution: "2048x1152",
   count: 1,
   max_retries: 1,
   guidance: 7,
@@ -1540,9 +1540,14 @@ function App() {
                     <label>
                       清晰度
                       <select value={imageParams.resolution} onChange={(event) => setImageParams({ ...imageParams, resolution: event.target.value })}>
-                        <option value="1280x720">1280x720</option>
-                        <option value="1920x1080">1920x1080</option>
-                        <option value="1024x1024">1024x1024</option>
+                        <option value="2048x2048">2048x2048 (推荐)</option>
+                        <option value="2048x1152">2048x1152 (16:9)</option>
+                        <option value="1152x2048">1152x2048 (9:16)</option>
+                        <option value="2048x1536">2048x1536 (4:3)</option>
+                        <option value="1920x1920">1920x1920</option>
+                        <option value="1920x1080">1920x1080 (不推荐-像素不足)</option>
+                        <option value="1280x720">1280x720 (不推荐-像素不足)</option>
+                        <option value="1024x1024">1024x1024 (不推荐-像素不足)</option>
                       </select>
                     </label>
                     <label>
