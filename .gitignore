@@ -16,6 +16,8 @@ frontend/dist/
 # Local runtime data
 .env
 .env.local
+backend/.env
+frontend/.env
 data/*
 !data/.gitkeep
 storage/*
@@ -25,4 +27,3 @@ storage/*
 .DS_Store
 .idea/
 .vscode/
-
