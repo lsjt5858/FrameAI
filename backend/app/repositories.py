@@ -15,6 +15,55 @@ JSON_DEFAULTS: dict[str, Any] = {
     "result_asset_ids": [],
     "request_payload": {},
     "response_payload": {},
+    "props": [],
+    "scenes": [],
+    "shot_drafts": [],
+    "checklist": {},
+    "quality_checks": {},
+    "publish_plan": {},
+}
+DEVELOPMENT_WORKSPACE_JSON_FIELDS = {
+    "characters",
+    "props",
+    "scenes",
+    "shot_drafts",
+    "checklist",
+    "quality_checks",
+    "publish_plan",
+}
+DEVELOPMENT_WORKSPACE_TEXT_FIELDS = {
+    "logline",
+    "genre",
+    "target_platform",
+    "audience",
+    "worldview",
+    "visual_style",
+    "episode_title",
+    "episode_script",
+}
+DEFAULT_DEVELOPMENT_WORKSPACE: dict[str, Any] = {
+    "logline": "",
+    "genre": "",
+    "target_platform": "抖音 / B站",
+    "audience": "",
+    "worldview": "",
+    "visual_style": "",
+    "episode_title": "EP01",
+    "episode_script": "",
+    "characters": [],
+    "props": [],
+    "scenes": [],
+    "shot_drafts": [],
+    "checklist": {},
+    "quality_checks": {},
+    "publish_plan": {
+        "platform": "抖音 / B站",
+        "schedule": "",
+        "titleA": "",
+        "titleB": "",
+        "coverBrief": "",
+        "metrics": "播放量、完播率、互动率、评论高频词",
+    },
 }
 
 
@@ -46,6 +95,44 @@ def _row(row: Any, json_fields: set[str] | None = None) -> dict[str, Any] | None
 
 def _rows(rows: list[Any], json_fields: set[str] | None = None) -> list[dict[str, Any]]:
     return [_row(item, json_fields) for item in rows if item is not None]  # type: ignore[list-item]
+
+
+def _workspace_row(row: Any) -> dict[str, Any] | None:
+    data = _row(row, DEVELOPMENT_WORKSPACE_JSON_FIELDS)
+    if not data:
+        return None
+    data["targetPlatform"] = data.pop("target_platform")
+    data["visualStyle"] = data.pop("visual_style")
+    data["episodeTitle"] = data.pop("episode_title")
+    data["episodeScript"] = data.pop("episode_script")
+    data["shotDrafts"] = data.pop("shot_drafts")
+    data["qualityChecks"] = data.pop("quality_checks")
+    data["publishPlan"] = data.pop("publish_plan")
+    return data
+
+
+def _workspace_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        **DEFAULT_DEVELOPMENT_WORKSPACE,
+        **data,
+    }
+    return {
+        "logline": payload.get("logline") or "",
+        "genre": payload.get("genre") or "",
+        "target_platform": payload.get("targetPlatform") or payload.get("target_platform") or "",
+        "audience": payload.get("audience") or "",
+        "worldview": payload.get("worldview") or "",
+        "visual_style": payload.get("visualStyle") or payload.get("visual_style") or "",
+        "episode_title": payload.get("episodeTitle") or payload.get("episode_title") or "",
+        "episode_script": payload.get("episodeScript") or payload.get("episode_script") or "",
+        "characters": payload.get("characters") or [],
+        "props": payload.get("props") or [],
+        "scenes": payload.get("scenes") or [],
+        "shot_drafts": payload.get("shotDrafts") or payload.get("shot_drafts") or [],
+        "checklist": payload.get("checklist") or {},
+        "quality_checks": payload.get("qualityChecks") or payload.get("quality_checks") or {},
+        "publish_plan": payload.get("publishPlan") or payload.get("publish_plan") or {},
+    }
 
 
 def _not_found(resource: str, item_id: str) -> ValueError:
@@ -113,6 +200,93 @@ def delete_project(project_id: str) -> None:
     with connect() as conn:
         conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         conn.commit()
+
+
+def get_development_workspace(project_id: str) -> dict[str, Any] | None:
+    if not get_project(project_id):
+        return None
+
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM project_development_workspaces WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+
+    if row:
+        return _workspace_row(row)
+
+    return create_development_workspace(project_id, {})
+
+
+def create_development_workspace(project_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    if not get_project(project_id):
+        raise _not_found("project", project_id)
+
+    now = utcnow()
+    workspace_id = new_id("dev")
+    payload = _workspace_payload(data)
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO project_development_workspaces (
+                id, project_id, logline, genre, target_platform, audience,
+                worldview, visual_style, episode_title, episode_script,
+                characters, props, scenes, shot_drafts, checklist, quality_checks,
+                publish_plan, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                workspace_id,
+                project_id,
+                payload["logline"],
+                payload["genre"],
+                payload["target_platform"],
+                payload["audience"],
+                payload["worldview"],
+                payload["visual_style"],
+                payload["episode_title"],
+                payload["episode_script"],
+                _dump(payload["characters"]),
+                _dump(payload["props"]),
+                _dump(payload["scenes"]),
+                _dump(payload["shot_drafts"]),
+                _dump(payload["checklist"]),
+                _dump(payload["quality_checks"]),
+                _dump(payload["publish_plan"]),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+    workspace = get_development_workspace(project_id)
+    return workspace  # type: ignore[return-value]
+
+
+def update_development_workspace(project_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    existing = get_development_workspace(project_id)
+    if not existing:
+        raise _not_found("project", project_id)
+
+    normalized = _workspace_payload({**existing, **fields})
+    updates: dict[str, Any] = {}
+    for field in DEVELOPMENT_WORKSPACE_TEXT_FIELDS:
+        if field in normalized:
+            updates[field] = normalized[field]
+    for field in DEVELOPMENT_WORKSPACE_JSON_FIELDS:
+        if field in normalized:
+            updates[field] = _dump(normalized[field])
+    updates["updated_at"] = utcnow()
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    with connect() as conn:
+        conn.execute(
+            f"UPDATE project_development_workspaces SET {assignments} WHERE project_id = ?",
+            (*updates.values(), project_id),
+        )
+        conn.commit()
+
+    workspace = get_development_workspace(project_id)
+    return workspace  # type: ignore[return-value]
 
 
 def next_shot_number(project_id: str) -> int:

@@ -31,6 +31,46 @@ class ProjectOut(BaseModel):
     updated_at: str
 
 
+class DevelopmentWorkspaceUpdate(BaseModel):
+    logline: str | None = None
+    genre: str | None = None
+    targetPlatform: str | None = None
+    audience: str | None = None
+    worldview: str | None = None
+    visualStyle: str | None = None
+    episodeTitle: str | None = None
+    episodeScript: str | None = None
+    characters: list[dict[str, Any]] | None = None
+    props: list[dict[str, Any]] | None = None
+    scenes: list[dict[str, Any]] | None = None
+    shotDrafts: list[dict[str, Any]] | None = None
+    checklist: dict[str, bool] | None = None
+    qualityChecks: dict[str, bool] | None = None
+    publishPlan: dict[str, Any] | None = None
+
+
+class DevelopmentWorkspaceOut(BaseModel):
+    id: str
+    project_id: str
+    logline: str
+    genre: str
+    targetPlatform: str
+    audience: str
+    worldview: str
+    visualStyle: str
+    episodeTitle: str
+    episodeScript: str
+    characters: list[dict[str, Any]]
+    props: list[dict[str, Any]]
+    scenes: list[dict[str, Any]]
+    shotDrafts: list[dict[str, Any]]
+    checklist: dict[str, bool]
+    qualityChecks: dict[str, bool]
+    publishPlan: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
 class ShotCreate(BaseModel):
     project_id: str
     shot_number: int | None = Field(default=None, ge=1)

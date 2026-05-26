@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.db import init_db
-from app.routers import assets, logs, projects, prompt_templates, settings as settings_router, shots, tasks
+from app.routers import assets, development, logs, projects, prompt_templates, settings as settings_router, shots, tasks
 from app.services.storage import ensure_storage_dirs
 from app.services.worker import run_worker_loop
 
@@ -45,6 +45,7 @@ app.add_middleware(
 
 app.include_router(projects.router, prefix="/api")
 app.include_router(assets.router, prefix="/api")
+app.include_router(development.router, prefix="/api")
 app.include_router(prompt_templates.router, prefix="/api")
 app.include_router(shots.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")

@@ -59,6 +59,28 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS project_development_workspaces (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+                logline TEXT NOT NULL DEFAULT '',
+                genre TEXT NOT NULL DEFAULT '',
+                target_platform TEXT NOT NULL DEFAULT '',
+                audience TEXT NOT NULL DEFAULT '',
+                worldview TEXT NOT NULL DEFAULT '',
+                visual_style TEXT NOT NULL DEFAULT '',
+                episode_title TEXT NOT NULL DEFAULT '',
+                episode_script TEXT NOT NULL DEFAULT '',
+                characters TEXT NOT NULL DEFAULT '[]',
+                props TEXT NOT NULL DEFAULT '[]',
+                scenes TEXT NOT NULL DEFAULT '[]',
+                shot_drafts TEXT NOT NULL DEFAULT '[]',
+                checklist TEXT NOT NULL DEFAULT '{}',
+                quality_checks TEXT NOT NULL DEFAULT '{}',
+                publish_plan TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS shots (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -157,6 +179,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_assets_project ON assets(project_id);
             CREATE INDEX IF NOT EXISTS idx_assets_shot ON assets(shot_id);
             CREATE INDEX IF NOT EXISTS idx_shots_project ON shots(project_id);
+            CREATE INDEX IF NOT EXISTS idx_workspaces_project ON project_development_workspaces(project_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON generation_tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_project ON generation_tasks(project_id);
             """

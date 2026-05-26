@@ -121,7 +121,7 @@ const CAPABILITY_GAPS = [
   { name: "提示词公式沉淀", status: "本轮补充", detail: "人物/场景/镜头公式可保存到模板库" },
   { name: "批量出图流水线", status: "本轮补充", detail: "可对已有分镜批量创建生图或生视频任务" },
   { name: "质检交付", status: "本轮补充", detail: "交付检查、发布计划和复盘指标进入剧本开发台" },
-  { name: "后端结构化存储", status: "待做", detail: "人物、场景、道具、剧本目前仍是浏览器本地工作区" },
+  { name: "后端结构化存储", status: "已补充", detail: "人物、场景、道具、剧本已按项目同步到后端开发工作区" },
   { name: "音频与发布数据", status: "待做", detail: "AI配音、字幕、平台发布和真实数据回收尚未接后端" }
 ];
 
@@ -174,12 +174,14 @@ function App() {
   const [assetFile, setAssetFile] = useState(null);
   const [assetName, setAssetName] = useState("");
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
+  const [assetSourceFilter, setAssetSourceFilter] = useState("all");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskLogs, setTaskLogs] = useState([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [projectSearch, setProjectSearch] = useState("");
+  const [globalSearch, setGlobalSearch] = useState("");
   const [projectStatusFilter, setProjectStatusFilter] = useState("all");
   const [assetSearch, setAssetSearch] = useState("");
   const [assetReviewFilter, setAssetReviewFilter] = useState("all");
@@ -190,6 +192,8 @@ function App() {
   const [showImageAdvanced, setShowImageAdvanced] = useState(false);
   const [showVideoAdvanced, setShowVideoAdvanced] = useState(false);
   const [developmentWorkspace, setDevelopmentWorkspace] = useState(loadDevelopmentWorkspace);
+  const [developmentWorkspaceProjectId, setDevelopmentWorkspaceProjectId] = useState("");
+  const [developmentSaveState, setDevelopmentSaveState] = useState("local");
   const [developmentView, setDevelopmentView] = useState("script");
 
   const selectedProject = useMemo(
@@ -220,15 +224,18 @@ function App() {
       const query = assetSearch.trim().toLowerCase();
       return projectAssets.filter((asset) => {
         const matchesType = assetTypeFilter === "all" || asset.asset_type === assetTypeFilter;
+        const matchesSource = assetSourceFilter === "all" || assetSourceFilter === getAssetSourceGroup(asset);
         const matchesReview = assetReviewFilter === "all" || asset.review_status === assetReviewFilter;
         const matchesSearch = !query
           || asset.name.toLowerCase().includes(query)
+          || (asset.source || "").toLowerCase().includes(query)
+          || (asset.provider || "").toLowerCase().includes(query)
           || (asset.prompt || "").toLowerCase().includes(query)
           || (asset.model || "").toLowerCase().includes(query);
-        return matchesType && matchesReview && matchesSearch;
+        return matchesType && matchesSource && matchesReview && matchesSearch;
       });
     },
-    [projectAssets, assetTypeFilter, assetReviewFilter, assetSearch]
+    [projectAssets, assetTypeFilter, assetSourceFilter, assetReviewFilter, assetSearch]
   );
   const selectedAsset = useMemo(
     () => projectAssets.find((asset) => asset.id === selectedAssetId) || null,
@@ -302,11 +309,36 @@ function App() {
     () => guideSteps.find((step) => step.status === "current") || guideSteps[guideSteps.length - 1],
     [guideSteps]
   );
+  const globalSearchResults = useMemo(
+    () => buildGlobalSearchResults({
+      query: globalSearch,
+      projects,
+      shots: projectShots,
+      assets: projectAssets,
+      tasks: projectTasks,
+      templates
+    }),
+    [globalSearch, projects, projectShots, projectAssets, projectTasks, templates]
+  );
 
   function navigateToGuideStep(step) {
     if (!step) return;
     if (step.view) setDevelopmentView(step.view);
     setActiveTab(step.tab);
+  }
+
+  function openGlobalSearchResult(result) {
+    if (!result) return;
+    if (result.projectId) setSelectedProjectId(result.projectId);
+    if (result.assetId) setSelectedAssetId(result.assetId);
+    if (result.shotId) setSelectedShotId(result.shotId);
+    if (result.taskId) setSelectedTaskId(result.taskId);
+    if (result.templateId) {
+      setTemplateCategoryFilter("all");
+      setTemplateApplyId("");
+    }
+    setActiveTab(result.tab);
+    setGlobalSearch("");
   }
 
   async function loadAll() {
@@ -406,12 +438,67 @@ function App() {
   }, [projectShots, selectedShotId]);
 
   useEffect(() => {
-    saveDevelopmentWorkspace(developmentWorkspace);
-  }, [developmentWorkspace]);
+    let cancelled = false;
+
+    if (!currentProjectId) {
+      setDevelopmentWorkspace(loadDevelopmentWorkspace());
+      setDevelopmentWorkspaceProjectId("");
+      setDevelopmentSaveState("local");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setDevelopmentSaveState("loading");
+    api.getDevelopmentWorkspace(currentProjectId)
+      .then((workspace) => {
+        if (cancelled) return;
+        const mergedWorkspace = mergeDevelopmentWorkspace(workspace);
+        setDevelopmentWorkspace(mergedWorkspace);
+        setDevelopmentWorkspaceProjectId(currentProjectId);
+        setDevelopmentSaveState("saved");
+        saveDevelopmentWorkspace(mergedWorkspace, currentProjectId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDevelopmentWorkspace(loadDevelopmentWorkspace(currentProjectId));
+        setDevelopmentWorkspaceProjectId(currentProjectId);
+        setDevelopmentSaveState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId]);
+
+  useEffect(() => {
+    saveDevelopmentWorkspace(developmentWorkspace, currentProjectId);
+    if (!currentProjectId || developmentWorkspaceProjectId !== currentProjectId) return undefined;
+
+    setDevelopmentSaveState("saving");
+    const timeout = window.setTimeout(() => {
+      api.updateDevelopmentWorkspace(currentProjectId, developmentWorkspacePayload(developmentWorkspace))
+        .then(() => setDevelopmentSaveState("saved"))
+        .catch(() => setDevelopmentSaveState("error"));
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [developmentWorkspace, currentProjectId, developmentWorkspaceProjectId]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [activeTab]);
+
+  useEffect(() => {
+    function handleShortcut(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.querySelector('[aria-label="全局搜索"]')?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   function updateDevelopmentField(field, value) {
     setDevelopmentWorkspace((workspace) => ({ ...workspace, [field]: value }));
@@ -865,6 +952,48 @@ function App() {
     });
   }
 
+  async function handleReuseAsset(asset, target) {
+    if (!asset) return;
+    setError("");
+    if (asset.asset_type !== "image") {
+      setError("当前复用动作需要图片素材。");
+      return;
+    }
+
+    if (target === "image-reference") {
+      setReferenceAssetId(asset.id);
+      setActiveTab("image-gen");
+      return;
+    }
+
+    if (target === "video-start") {
+      setReferenceAssetId(asset.id);
+      setActiveTab("video-gen");
+      return;
+    }
+
+    if (target === "video-end") {
+      setEndFrameAssetId(asset.id);
+      setActiveTab("video-gen");
+      return;
+    }
+
+    if (target !== "shot-reference") return;
+    if (!selectedShot) {
+      setError("请先在分镜工作台选择一个当前分镜。");
+      return;
+    }
+
+    await runAction(async () => {
+      await api.updateShot(selectedShot.id, {
+        reference_asset_ids: uniqueIds([...(selectedShot.reference_asset_ids || []), asset.id])
+      });
+      setSelectedShotId(selectedShot.id);
+      setActiveTab("shots");
+      await refreshProjectData();
+    });
+  }
+
   async function handleSaveTaskAsTemplate(task) {
     await runAction(async () => {
       const template = await api.createTemplate({
@@ -985,12 +1114,25 @@ function App() {
         <header className="console-topbar">
           <div className="topbar-search">
             <input
-              value=""
-              readOnly
-              aria-label="搜索占位"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              aria-label="全局搜索"
               placeholder="搜索项目、分镜、素材、任务..."
             />
             <span>CMD+K</span>
+            {globalSearch.trim() ? (
+              <div className="global-search-popover">
+                {globalSearchResults.length ? globalSearchResults.map((result) => (
+                  <button type="button" key={result.id} onClick={() => openGlobalSearchResult(result)}>
+                    <span className="global-search-type">{result.type}</span>
+                    <strong>{result.title}</strong>
+                    <small>{result.description}</small>
+                  </button>
+                )) : (
+                  <div className="global-search-empty">没有匹配的项目、分镜、素材、任务或模板。</div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div className="topbar-actions">
@@ -1067,11 +1209,12 @@ function App() {
         )}
 
         {activeTab === "development" && (
-          <DevelopmentPage
-            workspace={developmentWorkspace}
-            view={developmentView}
-            project={selectedProject}
-            onViewChange={setDevelopmentView}
+            <DevelopmentPage
+              workspace={developmentWorkspace}
+              view={developmentView}
+              project={selectedProject}
+              saveState={developmentSaveState}
+              onViewChange={setDevelopmentView}
             onFieldChange={updateDevelopmentField}
             onListItemChange={updateDevelopmentListItem}
             onAddListItem={addDevelopmentListItem}
@@ -1330,17 +1473,24 @@ function App() {
                   </label>
                   <button className="primary" type="submit">上传素材</button>
                 </form>
-                <AssetDetail asset={selectedAsset} assets={projectAssets} tasks={projectTasks} onRerunTask={handleRerunTask} />
+                <AssetDetail
+                  asset={selectedAsset}
+                  assets={projectAssets}
+                  tasks={projectTasks}
+                  currentShot={selectedShot}
+                  onRerunTask={handleRerunTask}
+                  onReuseAsset={handleReuseAsset}
+                />
               </RequireProject>
             </Panel>
-            <Panel title="素材库" subtitle="按类型、评审状态和关键词筛选素材，可切换网格或列表视图。">
+            <Panel title="素材库" subtitle="按类型、来源、评审状态和关键词筛选素材，可切换网格或列表视图。">
               <div className="toolbar asset-toolbar">
                 <label>
                   搜索素材
                   <input
                     value={assetSearch}
                     onChange={(event) => setAssetSearch(event.target.value)}
-                    placeholder="素材名称、提示词、模型"
+                    placeholder="名称、提示词、Provider、模型"
                   />
                 </label>
                 <label>
@@ -1352,6 +1502,15 @@ function App() {
                     <option value="audio">音频</option>
                     <option value="document">文档</option>
                     <option value="other">其他</option>
+                  </select>
+                </label>
+                <label>
+                  来源
+                  <select value={assetSourceFilter} onChange={(event) => setAssetSourceFilter(event.target.value)}>
+                    <option value="all">全部来源</option>
+                    <option value="generated">生成素材</option>
+                    <option value="upload">上传素材</option>
+                    <option value="other">其他来源</option>
                   </select>
                 </label>
                 <label>
@@ -2506,6 +2665,7 @@ function DevelopmentPage({
   workspace,
   view,
   project,
+  saveState,
   onViewChange,
   onFieldChange,
   onListItemChange,
@@ -2541,6 +2701,9 @@ function DevelopmentPage({
           <div className="tag-row">
             <span className="tag">当前项目：{project?.name || "未选择"}</span>
             <span className="tag">清单 {doneCount}/{DEVELOPMENT_CHECKLIST.length}</span>
+            <span className={`status ${getDevelopmentSaveStatusClass(saveState)}`}>
+              {getDevelopmentSaveStatusLabel(saveState)}
+            </span>
           </div>
         </div>
         <div className="hero-actions">
@@ -3154,7 +3317,7 @@ function AssetGrid({ assets, view, selectedAssetId, onOpen, onSelect, onReview }
           </div>
           <div className="asset-body">
             <strong>{asset.name}</strong>
-            <span>{asset.source} · {asset.asset_type} · {reviewLabel(asset.review_status)}</span>
+            <span>{assetSourceLabel(asset)} · {asset.asset_type} · {reviewLabel(asset.review_status)}</span>
             {asset.prompt ? <p>{asset.prompt}</p> : null}
             <div className="button-row">
               <button type="button" onClick={() => onOpen(asset)}>详情</button>
@@ -3172,13 +3335,15 @@ function AssetGrid({ assets, view, selectedAssetId, onOpen, onSelect, onReview }
   );
 }
 
-function AssetDetail({ asset, assets, tasks, onRerunTask }) {
+function AssetDetail({ asset, assets, tasks, currentShot, onRerunTask, onReuseAsset }) {
   if (!asset) {
     return <div className="empty-state detail-empty">选择一个素材后查看来源、参数和上游参考。</div>;
   }
 
   const upstreamAssets = assets.filter((item) => asset.upstream_asset_ids.includes(item.id));
   const sourceTask = tasks.find((task) => task.id === asset.task_id);
+  const canReuseAsFrame = asset.asset_type === "image";
+  const currentShotName = currentShot ? `#${currentShot.shot_number} ${currentShot.title || "未命名镜头"}` : "未选择分镜";
 
   return (
     <section className="asset-detail" aria-label="素材详情">
@@ -3192,7 +3357,7 @@ function AssetDetail({ asset, assets, tasks, onRerunTask }) {
         <dt>评审</dt>
         <dd>{reviewLabel(asset.review_status)}</dd>
         <dt>来源</dt>
-        <dd>{asset.source}</dd>
+        <dd>{assetSourceLabel(asset)}</dd>
         <dt>平台</dt>
         <dd>{asset.provider || "未记录"}</dd>
         <dt>模型</dt>
@@ -3200,6 +3365,25 @@ function AssetDetail({ asset, assets, tasks, onRerunTask }) {
         <dt>文件</dt>
         <dd>{asset.file_path}</dd>
       </dl>
+
+      <div className="detail-block">
+        <strong>复用动作</strong>
+        <div className="asset-reuse-actions">
+          <button type="button" disabled={!canReuseAsFrame} onClick={() => onReuseAsset(asset, "image-reference")}>
+            设为生图参考
+          </button>
+          <button type="button" disabled={!canReuseAsFrame} onClick={() => onReuseAsset(asset, "video-start")}>
+            设为视频首帧
+          </button>
+          <button type="button" disabled={!canReuseAsFrame} onClick={() => onReuseAsset(asset, "video-end")}>
+            设为视频尾帧
+          </button>
+          <button type="button" disabled={!canReuseAsFrame || !currentShot} onClick={() => onReuseAsset(asset, "shot-reference")}>
+            加入当前分镜参考
+          </button>
+        </div>
+        <span className="muted-text">当前分镜：{currentShotName}</span>
+      </div>
 
       {asset.prompt ? (
         <div className="detail-block">
@@ -3362,10 +3546,11 @@ function LogDashboard({ tasks, logs }) {
   );
 }
 
-function loadDevelopmentWorkspace() {
+function loadDevelopmentWorkspace(projectId = "") {
   if (typeof window === "undefined") return DEFAULT_DEVELOPMENT_WORKSPACE;
   try {
-    const saved = window.localStorage.getItem("frameai.developmentWorkspace");
+    const saved = window.localStorage.getItem(developmentWorkspaceStorageKey(projectId))
+      || window.localStorage.getItem("frameai.developmentWorkspace");
     if (!saved) return DEFAULT_DEVELOPMENT_WORKSPACE;
     return mergeDevelopmentWorkspace(JSON.parse(saved));
   } catch {
@@ -3373,9 +3558,33 @@ function loadDevelopmentWorkspace() {
   }
 }
 
-function saveDevelopmentWorkspace(workspace) {
+function saveDevelopmentWorkspace(workspace, projectId = "") {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem("frameai.developmentWorkspace", JSON.stringify(workspace));
+  window.localStorage.setItem(developmentWorkspaceStorageKey(projectId), JSON.stringify(workspace));
+}
+
+function developmentWorkspaceStorageKey(projectId = "") {
+  return projectId ? `frameai.developmentWorkspace.${projectId}` : "frameai.developmentWorkspace";
+}
+
+function developmentWorkspacePayload(workspace) {
+  return {
+    logline: workspace.logline,
+    genre: workspace.genre,
+    targetPlatform: workspace.targetPlatform,
+    audience: workspace.audience,
+    worldview: workspace.worldview,
+    visualStyle: workspace.visualStyle,
+    episodeTitle: workspace.episodeTitle,
+    episodeScript: workspace.episodeScript,
+    characters: workspace.characters,
+    props: workspace.props,
+    scenes: workspace.scenes,
+    shotDrafts: workspace.shotDrafts,
+    checklist: workspace.checklist,
+    qualityChecks: workspace.qualityChecks,
+    publishPlan: workspace.publishPlan
+  };
 }
 
 function mergeDevelopmentWorkspace(saved) {
@@ -3399,6 +3608,24 @@ function mergeDevelopmentWorkspace(saved) {
       ...(saved.publishPlan || {})
     }
   };
+}
+
+function getDevelopmentSaveStatusLabel(status) {
+  const labels = {
+    loading: "后端读取中",
+    saving: "后端保存中",
+    saved: "后端已保存",
+    error: "本地缓存",
+    local: "本地缓存"
+  };
+  return labels[status] || "本地缓存";
+}
+
+function getDevelopmentSaveStatusClass(status) {
+  if (status === "saved") return "succeeded";
+  if (status === "saving" || status === "loading") return "running";
+  if (status === "error") return "failed";
+  return "pending";
 }
 
 function buildDevelopmentPromptTemplates(workspace) {
@@ -3641,12 +3868,133 @@ function buildProviderConfigForms(providerConfigs) {
   );
 }
 
+function buildGlobalSearchResults({ query, projects, shots, assets, tasks, templates }) {
+  const keyword = query.trim().toLowerCase();
+  if (!keyword) return [];
+
+  const matches = (values) => values
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(keyword));
+
+  const projectResults = projects
+    .filter((project) => matches([project.name, project.description, project.status]))
+    .map((project) => ({
+      id: `project-${project.id}`,
+      type: "项目",
+      title: project.name,
+      description: project.description || project.status || "项目工作台",
+      tab: "project-detail",
+      projectId: project.id
+    }));
+
+  const shotResults = shots
+    .filter((shot) => matches([
+      shot.title,
+      shot.story,
+      shot.characters?.join(" "),
+      shot.image_prompt,
+      shot.video_prompt,
+      shot.status
+    ]))
+    .map((shot) => ({
+      id: `shot-${shot.id}`,
+      type: "分镜",
+      title: shot.title,
+      description: shot.story || shot.status || "分镜工作台",
+      tab: "shots",
+      projectId: shot.project_id,
+      shotId: shot.id
+    }));
+
+  const assetResults = assets
+    .filter((asset) => matches([
+      asset.name,
+      asset.asset_type,
+      asset.review_status,
+      asset.prompt,
+      asset.model,
+      asset.provider
+    ]))
+    .map((asset) => ({
+      id: `asset-${asset.id}`,
+      type: "素材",
+      title: asset.name,
+      description: `${asset.asset_type} · ${asset.review_status || "unreviewed"}`,
+      tab: "assets",
+      projectId: asset.project_id,
+      assetId: asset.id
+    }));
+
+  const taskResults = tasks
+    .filter((task) => matches([
+      task.task_type,
+      task.status,
+      task.provider,
+      task.model,
+      task.prompt,
+      task.error_message
+    ]))
+    .map((task) => ({
+      id: `task-${task.id}`,
+      type: "任务",
+      title: `${task.task_type === "image" ? "生图" : "生视频"} · ${task.status}`,
+      description: task.prompt || task.model || task.provider,
+      tab: "tasks",
+      projectId: task.project_id,
+      taskId: task.id
+    }));
+
+  const templateResults = templates
+    .filter((template) => matches([
+      template.name,
+      template.category,
+      template.content,
+      template.variables?.join(" "),
+      template.notes
+    ]))
+    .map((template) => ({
+      id: `template-${template.id}`,
+      type: "模板",
+      title: template.name,
+      description: `${template.category} · ${template.variables?.length || 0} 个变量`,
+      tab: "templates",
+      templateId: template.id
+    }));
+
+  return [
+    ...projectResults,
+    ...shotResults,
+    ...assetResults,
+    ...taskResults,
+    ...templateResults
+  ].slice(0, 8);
+}
+
 function splitList(value) {
   if (!value) return [];
   return value
     .split(/[,，\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function uniqueIds(ids) {
+  return [...new Set(ids.filter(Boolean))];
+}
+
+function getAssetSourceGroup(asset) {
+  if (asset.task_id || (asset.source || "").startsWith("generated")) return "generated";
+  if (asset.source === "upload") return "upload";
+  return "other";
+}
+
+function assetSourceLabel(asset) {
+  const labels = {
+    upload: "上传素材",
+    generated_image: "生成图片",
+    generated_video: "生成视频"
+  };
+  return labels[asset.source] || (getAssetSourceGroup(asset) === "generated" ? "生成素材" : asset.source || "未记录");
 }
 
 function normalizedImageParams(params) {
