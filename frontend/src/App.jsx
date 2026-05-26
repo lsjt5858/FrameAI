@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fileUrl } from "./api/client.js";
+import {
+  getImageReferenceAssetIds,
+  getVideoReferenceAssetIds,
+  hasVideoSourceAsset,
+  uniqueIds
+} from "./lib/shot-assets.js";
 
 const NAV_GROUPS = ["工作台", "素材", "生成", "系统"];
 const NAV_ITEMS = [
@@ -23,6 +29,9 @@ const EMPTY_SHOT = {
   title: "",
   story: "",
   characters: "",
+  character_asset_ids: [],
+  costume_asset_ids: [],
+  scene_asset_ids: [],
   reference_asset_ids: [],
   image_prompt: "",
   video_prompt: "",
@@ -552,6 +561,9 @@ function App() {
           title: draft.title,
           story: draft.story,
           characters: draft.characters,
+          character_asset_ids: [],
+          costume_asset_ids: [],
+          scene_asset_ids: [],
           reference_asset_ids: [],
           image_prompt: draft.image_prompt,
           video_prompt: draft.video_prompt,
@@ -630,8 +642,8 @@ function App() {
       for (const shot of targetShots) {
         const prompt = type === "image" ? shot.image_prompt || shot.story : shot.video_prompt || shot.story;
         const reference_asset_ids = type === "image"
-          ? shot.reference_asset_ids
-          : [shot.selected_image_asset_id || shot.reference_asset_ids[0]].filter(Boolean);
+          ? getImageReferenceAssetIds(shot)
+          : getVideoReferenceAssetIds(shot);
         await create({
           project_id: currentProjectId,
           shot_id: shot.id,
@@ -716,6 +728,9 @@ function App() {
         title: shotForm.title,
         story: shotForm.story,
         characters: splitList(shotForm.characters),
+        character_asset_ids: shotForm.character_asset_ids,
+        costume_asset_ids: shotForm.costume_asset_ids,
+        scene_asset_ids: shotForm.scene_asset_ids,
         reference_asset_ids: shotForm.reference_asset_ids,
         image_prompt: shotForm.image_prompt,
         video_prompt: shotForm.video_prompt,
@@ -733,6 +748,9 @@ function App() {
       title: shot.title,
       story: shot.story,
       characters: shot.characters.join(", "),
+      character_asset_ids: shot.character_asset_ids || [],
+      costume_asset_ids: shot.costume_asset_ids || [],
+      scene_asset_ids: shot.scene_asset_ids || [],
       reference_asset_ids: shot.reference_asset_ids,
       image_prompt: shot.image_prompt,
       video_prompt: shot.video_prompt,
@@ -755,6 +773,9 @@ function App() {
         title: shotEditForm.title,
         story: shotEditForm.story,
         characters: splitList(shotEditForm.characters),
+        character_asset_ids: shotEditForm.character_asset_ids,
+        costume_asset_ids: shotEditForm.costume_asset_ids,
+        scene_asset_ids: shotEditForm.scene_asset_ids,
         reference_asset_ids: shotEditForm.reference_asset_ids,
         image_prompt: shotEditForm.image_prompt,
         video_prompt: shotEditForm.video_prompt,
@@ -894,8 +915,8 @@ function App() {
         ? providerInfo?.image_model || "mock-image-v1"
         : providerInfo?.video_model || "mock-video-v1";
       const reference_asset_ids = type === "image"
-        ? shot.reference_asset_ids
-        : [shot.selected_image_asset_id || shot.reference_asset_ids[0]].filter(Boolean);
+        ? getImageReferenceAssetIds(shot)
+        : getVideoReferenceAssetIds(shot);
       const params = type === "image" ? normalizedImageParams(imageParams) : normalizedVideoParams(videoParams);
       const max_retries = type === "image" ? Number(imageParams.max_retries) : Number(videoParams.max_retries);
       const create = type === "image" ? api.createImageTask : api.createVideoTask;
@@ -1347,6 +1368,29 @@ function App() {
                   </label>
                   <ReferenceAssetPicker
                     assets={imageAssets}
+                    legend="角色图"
+                    description="绑定人物身份、脸型、发型等一致性参考。"
+                    selectedIds={shotForm.character_asset_ids}
+                    onChange={(character_asset_ids) => setShotForm({ ...shotForm, character_asset_ids })}
+                  />
+                  <ReferenceAssetPicker
+                    assets={imageAssets}
+                    legend="服装图"
+                    description="绑定服饰、妆造、配饰和时代质感参考。"
+                    selectedIds={shotForm.costume_asset_ids}
+                    onChange={(costume_asset_ids) => setShotForm({ ...shotForm, costume_asset_ids })}
+                  />
+                  <ReferenceAssetPicker
+                    assets={imageAssets}
+                    legend="场景图"
+                    description="绑定地点、布光、空间结构和氛围参考。"
+                    selectedIds={shotForm.scene_asset_ids}
+                    onChange={(scene_asset_ids) => setShotForm({ ...shotForm, scene_asset_ids })}
+                  />
+                  <ReferenceAssetPicker
+                    assets={imageAssets}
+                    legend="通用参考图"
+                    description="补充构图、画风、道具或其他非结构化参考。"
                     selectedIds={shotForm.reference_asset_ids}
                     onChange={(reference_asset_ids) => setShotForm({ ...shotForm, reference_asset_ids })}
                   />
@@ -1381,6 +1425,29 @@ function App() {
                     </label>
                     <ReferenceAssetPicker
                       assets={imageAssets}
+                      legend="角色图"
+                      description="绑定人物身份、脸型、发型等一致性参考。"
+                      selectedIds={shotEditForm.character_asset_ids}
+                      onChange={(character_asset_ids) => setShotEditForm({ ...shotEditForm, character_asset_ids })}
+                    />
+                    <ReferenceAssetPicker
+                      assets={imageAssets}
+                      legend="服装图"
+                      description="绑定服饰、妆造、配饰和时代质感参考。"
+                      selectedIds={shotEditForm.costume_asset_ids}
+                      onChange={(costume_asset_ids) => setShotEditForm({ ...shotEditForm, costume_asset_ids })}
+                    />
+                    <ReferenceAssetPicker
+                      assets={imageAssets}
+                      legend="场景图"
+                      description="绑定地点、布光、空间结构和氛围参考。"
+                      selectedIds={shotEditForm.scene_asset_ids}
+                      onChange={(scene_asset_ids) => setShotEditForm({ ...shotEditForm, scene_asset_ids })}
+                    />
+                    <ReferenceAssetPicker
+                      assets={imageAssets}
+                      legend="通用参考图"
+                      description="补充构图、画风、道具或其他非结构化参考。"
                       selectedIds={shotEditForm.reference_asset_ids}
                       onChange={(reference_asset_ids) => setShotEditForm({ ...shotEditForm, reference_asset_ids })}
                     />
@@ -3038,7 +3105,10 @@ function ShotFocus({
 
   const imageResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "image");
   const videoResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "video");
-  const referenceAssets = assets.filter((asset) => shot.reference_asset_ids.includes(asset.id));
+  const characterAssets = assets.filter((asset) => (shot.character_asset_ids || []).includes(asset.id));
+  const costumeAssets = assets.filter((asset) => (shot.costume_asset_ids || []).includes(asset.id));
+  const sceneAssets = assets.filter((asset) => (shot.scene_asset_ids || []).includes(asset.id));
+  const referenceAssets = assets.filter((asset) => (shot.reference_asset_ids || []).includes(asset.id));
 
   return (
     <section className="shot-focus">
@@ -3063,7 +3133,19 @@ function ShotFocus({
               <p>{shot.characters.length ? shot.characters.join("、") : "未指定"}</p>
             </div>
             <div className="detail-card">
-              <strong>参考素材</strong>
+              <strong>角色图</strong>
+              <p>{assetNames(characterAssets, "暂无角色图")}</p>
+            </div>
+            <div className="detail-card">
+              <strong>服装图</strong>
+              <p>{assetNames(costumeAssets, "暂无服装图")}</p>
+            </div>
+            <div className="detail-card">
+              <strong>场景图</strong>
+              <p>{assetNames(sceneAssets, "暂无场景图")}</p>
+            </div>
+            <div className="detail-card">
+              <strong>通用参考图</strong>
               <p>{referenceAssets.length ? referenceAssets.map((asset) => asset.name).join("、") : "暂无参考素材"}</p>
             </div>
           </div>
@@ -3176,33 +3258,82 @@ function RequireProject({ project, children }) {
   return children;
 }
 
-function ReferenceAssetPicker({ assets, selectedIds, onChange }) {
+function ReferenceAssetPicker({
+  assets,
+  selectedIds = [],
+  onChange,
+  legend = "参考图",
+  description = "",
+  emptyText = "素材库还没有图片素材。"
+}) {
+  const [query, setQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const filteredAssets = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return assets.filter((asset) => {
+      const matchesSource = sourceFilter === "all" || sourceFilter === getAssetSourceGroup(asset);
+      const matchesSearch = !keyword
+        || asset.name.toLowerCase().includes(keyword)
+        || (asset.prompt || "").toLowerCase().includes(keyword)
+        || (asset.provider || "").toLowerCase().includes(keyword)
+        || (asset.model || "").toLowerCase().includes(keyword);
+      return matchesSource && matchesSearch;
+    });
+  }, [assets, query, sourceFilter]);
+
   function toggle(assetId) {
     if (selectedIds.includes(assetId)) {
       onChange(selectedIds.filter((id) => id !== assetId));
     } else {
-      onChange([...selectedIds, assetId]);
+      onChange(uniqueIds([...selectedIds, assetId]));
     }
   }
 
   return (
-    <fieldset className="checkbox-field">
-      <legend>参考图</legend>
+    <fieldset className="checkbox-field asset-slot-picker">
+      <legend>{legend}</legend>
+      {description ? <p className="muted-text">{description}</p> : null}
+      <div className="slot-picker-toolbar">
+        <label>
+          搜索
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="名称、提示词、Provider、模型"
+            disabled={!assets.length}
+          />
+        </label>
+        <label>
+          来源
+          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} disabled={!assets.length}>
+            <option value="all">全部来源</option>
+            <option value="generated">生成素材</option>
+            <option value="upload">上传素材</option>
+            <option value="other">其他来源</option>
+          </select>
+        </label>
+      </div>
       {assets.length ? (
-        <div className="checkbox-grid">
-          {assets.map((asset) => (
-            <label key={asset.id}>
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(asset.id)}
-                onChange={() => toggle(asset.id)}
-              />
-              <span>{asset.name}</span>
-            </label>
-          ))}
-        </div>
+        <>
+          {filteredAssets.length ? (
+            <div className="checkbox-grid">
+              {filteredAssets.map((asset) => (
+                <label key={asset.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(asset.id)}
+                    onChange={() => toggle(asset.id)}
+                  />
+                  <span>{asset.name}</span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p>没有匹配这个槽位筛选条件的图片素材。</p>
+          )}
+        </>
       ) : (
-        <p>素材库还没有图片素材。</p>
+        <p>{emptyText}</p>
       )}
     </fieldset>
   );
@@ -3220,7 +3351,10 @@ function ShotCard({
   onSelectVideo,
   onSetStatus
 }) {
-  const referenceAssets = assets.filter((asset) => shot.reference_asset_ids.includes(asset.id));
+  const characterAssets = assets.filter((asset) => (shot.character_asset_ids || []).includes(asset.id));
+  const costumeAssets = assets.filter((asset) => (shot.costume_asset_ids || []).includes(asset.id));
+  const sceneAssets = assets.filter((asset) => (shot.scene_asset_ids || []).includes(asset.id));
+  const referenceAssets = assets.filter((asset) => (shot.reference_asset_ids || []).includes(asset.id));
   const imageResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "image");
   const videoResults = assets.filter((asset) => asset.shot_id === shot.id && asset.asset_type === "video");
 
@@ -3235,6 +3369,9 @@ function ShotCard({
         <p>{shot.story || "未填写剧情"}</p>
         <div className="tag-row">
           {shot.characters.map((character) => <span className="tag" key={character}>{character}</span>)}
+          {characterAssets.map((asset) => <span className="tag" key={asset.id}>角色图：{asset.name}</span>)}
+          {costumeAssets.map((asset) => <span className="tag" key={asset.id}>服装：{asset.name}</span>)}
+          {sceneAssets.map((asset) => <span className="tag" key={asset.id}>场景：{asset.name}</span>)}
           {referenceAssets.map((asset) => <span className="tag" key={asset.id}>参考：{asset.name}</span>)}
         </div>
 
@@ -3242,7 +3379,7 @@ function ShotCard({
           <button type="button" onClick={onOpen}>聚焦详情</button>
           <button type="button" onClick={() => onEdit(shot)}>编辑</button>
           <button type="button" onClick={onCreateImage}>一键生图</button>
-          <button type="button" disabled={!shot.selected_image_asset_id && !shot.reference_asset_ids.length} onClick={onCreateVideo}>入选图生视频</button>
+          <button type="button" disabled={!hasVideoSourceAsset(shot)} onClick={onCreateVideo}>入选图生视频</button>
           <button type="button" onClick={() => onSetStatus("approved")}>标记通过</button>
           <button className="danger" type="button" onClick={() => onSetStatus("rejected")}>废弃</button>
         </div>
@@ -3978,8 +4115,8 @@ function splitList(value) {
     .filter(Boolean);
 }
 
-function uniqueIds(ids) {
-  return [...new Set(ids.filter(Boolean))];
+function assetNames(assets, emptyText) {
+  return assets.length ? assets.map((asset) => asset.name).join("、") : emptyText;
 }
 
 function getAssetSourceGroup(asset) {

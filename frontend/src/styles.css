@@ -578,6 +578,16 @@ textarea {
   font-weight: 700;
 }
 
+.slot-picker-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 180px);
+  gap: 10px;
+}
+
+.asset-slot-picker .muted-text {
+  font-size: 12px;
+}
+
 .checkbox-field p,
 .muted-text,
 .shot-notes,
@@ -1749,6 +1759,7 @@ textarea:focus {
   .metric-strip,
   .metric-grid,
   .generation-side .metric-grid,
+  .slot-picker-toolbar,
   .asset-grid.list-view .asset-item {
     grid-template-columns: 1fr;
   }

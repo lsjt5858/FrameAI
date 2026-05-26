@@ -78,6 +78,9 @@ class ShotCreate(BaseModel):
     story: str = ""
     characters: list[str] = Field(default_factory=list)
     scene_id: str | None = None
+    character_asset_ids: list[str] = Field(default_factory=list)
+    costume_asset_ids: list[str] = Field(default_factory=list)
+    scene_asset_ids: list[str] = Field(default_factory=list)
     reference_asset_ids: list[str] = Field(default_factory=list)
     image_prompt: str = ""
     video_prompt: str = ""
@@ -91,6 +94,9 @@ class ShotUpdate(BaseModel):
     story: str | None = None
     characters: list[str] | None = None
     scene_id: str | None = None
+    character_asset_ids: list[str] | None = None
+    costume_asset_ids: list[str] | None = None
+    scene_asset_ids: list[str] | None = None
     reference_asset_ids: list[str] | None = None
     image_prompt: str | None = None
     video_prompt: str | None = None
@@ -108,6 +114,9 @@ class ShotOut(BaseModel):
     story: str
     characters: list[str]
     scene_id: str | None = None
+    character_asset_ids: list[str]
+    costume_asset_ids: list[str]
+    scene_asset_ids: list[str]
     reference_asset_ids: list[str]
     image_prompt: str
     video_prompt: str

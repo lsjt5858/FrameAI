@@ -8,6 +8,9 @@ from app.db import connect, new_id, utcnow
 
 JSON_DEFAULTS: dict[str, Any] = {
     "characters": [],
+    "character_asset_ids": [],
+    "costume_asset_ids": [],
+    "scene_asset_ids": [],
     "reference_asset_ids": [],
     "params": {},
     "upstream_asset_ids": [],
@@ -308,13 +311,13 @@ def list_shots(project_id: str | None = None) -> list[dict[str, Any]]:
 
     with connect() as conn:
         rows = conn.execute(sql, params).fetchall()
-    return _rows(rows, {"characters", "reference_asset_ids"})
+    return _rows(rows, {"characters", "character_asset_ids", "costume_asset_ids", "scene_asset_ids", "reference_asset_ids"})
 
 
 def get_shot(shot_id: str) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute("SELECT * FROM shots WHERE id = ?", (shot_id,)).fetchone()
-    return _row(row, {"characters", "reference_asset_ids"})
+    return _row(row, {"characters", "character_asset_ids", "costume_asset_ids", "scene_asset_ids", "reference_asset_ids"})
 
 
 def create_shot(data: dict[str, Any]) -> dict[str, Any]:
@@ -326,9 +329,9 @@ def create_shot(data: dict[str, Any]) -> dict[str, Any]:
             """
             INSERT INTO shots (
                 id, project_id, shot_number, title, story, characters, scene_id,
-                reference_asset_ids, image_prompt, video_prompt, status, notes,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                character_asset_ids, costume_asset_ids, scene_asset_ids, reference_asset_ids,
+                image_prompt, video_prompt, status, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 shot_id,
@@ -338,6 +341,9 @@ def create_shot(data: dict[str, Any]) -> dict[str, Any]:
                 data.get("story") or "",
                 _dump(data.get("characters") or []),
                 data.get("scene_id"),
+                _dump(data.get("character_asset_ids") or []),
+                _dump(data.get("costume_asset_ids") or []),
+                _dump(data.get("scene_asset_ids") or []),
                 _dump(data.get("reference_asset_ids") or []),
                 data.get("image_prompt") or "",
                 data.get("video_prompt") or "",
@@ -362,6 +368,9 @@ def update_shot(shot_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         "story",
         "characters",
         "scene_id",
+        "character_asset_ids",
+        "costume_asset_ids",
+        "scene_asset_ids",
         "reference_asset_ids",
         "image_prompt",
         "video_prompt",
@@ -371,7 +380,7 @@ def update_shot(shot_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         "notes",
     }
     updates = {key: value for key, value in fields.items() if key in allowed}
-    for field in ("characters", "reference_asset_ids"):
+    for field in ("characters", "character_asset_ids", "costume_asset_ids", "scene_asset_ids", "reference_asset_ids"):
         if field in updates:
             updates[field] = _dump(updates[field] or [])
     if not updates:

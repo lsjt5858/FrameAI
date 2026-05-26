@@ -89,6 +89,9 @@ def init_db() -> None:
                 story TEXT NOT NULL DEFAULT '',
                 characters TEXT NOT NULL DEFAULT '[]',
                 scene_id TEXT REFERENCES scenes(id) ON DELETE SET NULL,
+                character_asset_ids TEXT NOT NULL DEFAULT '[]',
+                costume_asset_ids TEXT NOT NULL DEFAULT '[]',
+                scene_asset_ids TEXT NOT NULL DEFAULT '[]',
                 reference_asset_ids TEXT NOT NULL DEFAULT '[]',
                 image_prompt TEXT NOT NULL DEFAULT '',
                 video_prompt TEXT NOT NULL DEFAULT '',
@@ -185,6 +188,9 @@ def init_db() -> None:
             """
         )
         _ensure_column(conn, "assets", "review_status", "TEXT NOT NULL DEFAULT 'unreviewed'")
+        _ensure_column(conn, "shots", "character_asset_ids", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(conn, "shots", "costume_asset_ids", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(conn, "shots", "scene_asset_ids", "TEXT NOT NULL DEFAULT '[]'")
         _seed_prompt_templates(conn)
         conn.commit()
 
